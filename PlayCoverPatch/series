@@ -1,0 +1,16 @@
+patches/0001-register-vrchat-memory-policy-coordinator.patch
+patches/0002-never-inject-playtools-into-vrchat.patch
+patches/0003-route-vrchat-launches-through-controller.patch
+patches/0004-identify-and-protect-vrchat-patched-build.patch
+patches/0005-remove-disabled-sparkle-dependency.patch
+patches/0006-parallel-identity-read-only-pcvr2.patch
+patches/0007-quote-custom-product-build-paths.patch
+patches/0008-bind-reviewed-launch-identity.patch
+patches/0009-canonicalize-vrchat-settings-lifecycle.patch
+patches/0010-restore-native-toolbar-localization.patch
+patches/0011-complete-zh-hans-localization.patch
+patches/0012-complete-localization-fallbacks-a.patch
+patches/0013-complete-localization-fallbacks-b.patch
+patches/0014-complete-localization-fallbacks-c.patch
+patches/0015-include-all-localization-resources.patch
+patches/0016-vrchat-memory-in-app-settings.patch

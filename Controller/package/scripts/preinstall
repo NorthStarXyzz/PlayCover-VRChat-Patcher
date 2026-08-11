@@ -1,0 +1,169 @@
+#!/bin/zsh -p
+
+set -eu
+setopt NO_RCS PIPE_FAIL
+
+script_dir=${0:A:h}
+source "$script_dir/common.zsh"
+
+validate_installer_context "$@"
+require_supported_host
+install_journal_was_new=0
+install_journal_temp=''
+keep_install_journal=0
+
+cleanup_preinstall() {
+    local result=$?
+    trap - EXIT INT TERM HUP
+    if (( install_journal_was_new && ! keep_install_journal )); then
+        if [[ -e "$install_journal" || -L "$install_journal" ]]; then
+            verify_file "$install_journal" 400 "$install_journal_sha"
+            /bin/unlink "$install_journal"
+        fi
+    fi
+    if [[ -n ${install_journal_temp:-} &&
+          ( -e "$install_journal_temp" || -L "$install_journal_temp" ) ]]; then
+        /bin/unlink "$install_journal_temp" 2>/dev/null || true
+    fi
+    release_owned_operation_claim
+    if [[ -n ${operation_claim_temp:-} &&
+          ( -e "$operation_claim_temp" || -L "$operation_claim_temp" ) ]]; then
+        /bin/unlink "$operation_claim_temp" 2>/dev/null || true
+    fi
+    exit "$result"
+}
+trap cleanup_preinstall EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+acquire_operation_claim_for_install
+require_absent "$uninstall_journal"
+ensure_install_journal
+verify_owned_operation_claim
+require_absent "$uninstall_journal"
+
+installed_receipt=$(receipt_state)
+controller_present=0
+runner_present=0
+attestation_present=0
+quarantined_controller_present=0
+quarantined_runner_present=0
+controller_sha=''
+runner_sha=''
+quarantined_controller_sha=''
+quarantined_runner_sha=''
+
+if [[ -e "$package_dir" || -L "$package_dir" ]]; then
+    verify_directory "$package_dir" '0:0:755:Directory:-'
+    verify_package_entries
+fi
+if [[ -e "$controller" || -L "$controller" ]]; then
+    verify_file_metadata "$controller" 500
+    /usr/bin/codesign --verify --strict "$controller"
+    controller_sha=$(sha256 "$controller")
+    controller_present=1
+fi
+if [[ -e "$runner" || -L "$runner" ]]; then
+    verify_file_metadata "$runner" 555
+    runner_sha=$(sha256 "$runner")
+    runner_present=1
+fi
+if [[ -e "$attestation" || -L "$attestation" ]]; then
+    verify_file "$attestation" 444 "$current_attestation_sha"
+    attestation_present=1
+fi
+if [[ -e "$controller_quarantine" || -L "$controller_quarantine" ]]; then
+    verify_predecessor_controller "$controller_quarantine"
+    quarantined_controller_sha=$(sha256 "$controller_quarantine")
+    quarantined_controller_present=1
+fi
+if [[ -e "$runner_quarantine" || -L "$runner_quarantine" ]]; then
+    verify_predecessor_runner "$runner_quarantine"
+    quarantined_runner_sha=$(sha256 "$runner_quarantine")
+    quarantined_runner_present=1
+fi
+
+if (( install_journal_was_new )); then
+    new_journal_quarantine_state=$(classify_new_journal_quarantine_state \
+        "$quarantined_controller_present" "$quarantined_runner_present")
+    [[ "$new_journal_quarantine_state" == fresh ]] || \
+        fail "A quarantine object without its original install journal is untrusted."
+fi
+
+if (( ! install_journal_was_new )); then
+    [[ "$installed_receipt" == absent || "$installed_receipt" == current ]] || \
+        fail "Interrupted install has an unknown receipt state."
+    recovery_action=$(classify_journaled_install_state \
+        "$controller_present" "$runner_present" "$attestation_present" \
+        "$installed_receipt" "$controller_sha" "$runner_sha" \
+        "$quarantined_controller_present" "$quarantined_runner_present" \
+        "$quarantined_controller_sha" "$quarantined_runner_sha")
+    case "$recovery_action" in
+        quarantine-r5)
+            quarantine_predecessor_pair "$r5_controller_sha" "$r5_runner_sha"
+            ;;
+        quarantine-r3)
+            quarantine_predecessor_pair "$r3_controller_sha" "$r3_runner_sha"
+            ;;
+        quarantine-r6-previous)
+            quarantine_predecessor_pair "$r6_previous_controller_sha" "$r6_previous_runner_sha"
+            ;;
+        complete-quarantine-r5|complete-quarantine-r3|complete-quarantine-r6-previous)
+            verify_owned_install_transition
+            /bin/mv "$runner" "$runner_quarantine"
+            verify_predecessor_runner "$runner_quarantine"
+            ;;
+        resume)
+            ;;
+        *)
+            fail "Interrupted install is not an exact reachable transition."
+            ;;
+    esac
+    require_inactive_after_quarantine
+    print -- "Resuming an exact journaled subset of reviewed controller artifacts."
+    keep_install_journal=1
+    exit 0
+fi
+
+case "$controller_present:$runner_present:$attestation_present:$installed_receipt:$controller_sha:$runner_sha" in
+    0:0:0:absent::)
+        print -- "Installing the reviewed r6 controller package into an absent state."
+        ;;
+    1:1:1:current:"$current_controller_sha":"$current_runner_sha"|\
+    1:1:1:absent:"$current_controller_sha":"$current_runner_sha")
+        print -- "Repairing the exact reviewed r6 controller package."
+        ;;
+    1:1:0:absent:"$r5_controller_sha":"$r5_runner_sha")
+        keep_install_journal=1
+        quarantine_predecessor_pair "$r5_controller_sha" "$r5_runner_sha"
+        print -- "Upgrading the explicitly reviewed r5 controller pair."
+        ;;
+    1:1:0:absent:"$r3_controller_sha":"$r3_runner_sha")
+        keep_install_journal=1
+        quarantine_predecessor_pair "$r3_controller_sha" "$r3_runner_sha"
+        print -- "Upgrading the explicitly reviewed observed-r3 controller pair."
+        ;;
+    1:1:1:current:"$r6_previous_controller_sha":"$r6_previous_runner_sha"|\
+    1:1:1:absent:"$r6_previous_controller_sha":"$r6_previous_runner_sha"|\
+    1:1:0:absent:"$r6_previous_controller_sha":"$r6_previous_runner_sha"|\
+    1:1:1:current:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha"|\
+    1:1:1:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha"|\
+    1:1:0:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha")
+        keep_install_journal=1
+        if [[ "$runner_sha" == "$r6_pre_provenance_runner_sha" ]]; then
+            quarantine_predecessor_pair "$r6_pre_provenance_controller_sha" "$r6_pre_provenance_runner_sha"
+            print -- "Upgrading the explicitly reviewed pre-provenance-fix r6 controller pair."
+        else
+            quarantine_predecessor_pair "$r6_previous_controller_sha" "$r6_previous_runner_sha"
+            print -- "Upgrading the explicitly reviewed pre-xattr-fix r6 controller pair."
+        fi
+        ;;
+    *)
+        fail "Refusing an unknown, mixed, partial, or receipt-mismatched controller installation."
+        ;;
+esac
+
+require_inactive_after_quarantine
+keep_install_journal=1
+exit 0

@@ -1,0 +1,13 @@
+diff --git a/PlayCover.xcodeproj/project.pbxproj b/PlayCover.xcodeproj/project.pbxproj
+index f76a068..8759b0a 100644
+--- a/PlayCover.xcodeproj/project.pbxproj
++++ b/PlayCover.xcodeproj/project.pbxproj
+@@ -612,7 +612,7 @@
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 			shellPath = /bin/sh;
+-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nset -euo pipefail\n\nIDENTITY=${EXPANDED_CODE_SIGN_IDENTITY_NAME:--};\nif [ \"$IDENTITY\" = \"Sign to Run Locally\" ]; then\n    IDENTITY=-\nfi\necho Signing identity $IDENTITY;\n\ncodesign --verbose --force --deep --sign \"$IDENTITY\" ${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PlayTools.framework/PlugIns/AKInterface.bundle;\ncodesign --verbose --force --deep --sign \"$IDENTITY\" ${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PlayTools.framework;\n";
++			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nset -euo pipefail\n\nIDENTITY=${EXPANDED_CODE_SIGN_IDENTITY_NAME:--};\nif [ \"$IDENTITY\" = \"Sign to Run Locally\" ]; then\n    IDENTITY=-\nfi\necho Signing identity $IDENTITY;\n\ncodesign --verbose --force --deep --sign \"$IDENTITY\" \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PlayTools.framework/PlugIns/AKInterface.bundle\";\ncodesign --verbose --force --deep --sign \"$IDENTITY\" \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PlayTools.framework\";\n";
+ 		};
+ 		AAE8809C287ACA4900FBB23C /* Carthage Bootstrap */ = {
+ 			isa = PBXShellScriptBuildPhase;

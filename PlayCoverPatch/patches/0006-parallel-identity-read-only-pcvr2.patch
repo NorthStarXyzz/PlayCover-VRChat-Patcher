@@ -1,0 +1,592 @@
+diff --git a/PlayCover.xcodeproj/project.pbxproj b/PlayCover.xcodeproj/project.pbxproj
+index 2e39ad9..f76a068 100644
+--- a/PlayCover.xcodeproj/project.pbxproj
++++ b/PlayCover.xcodeproj/project.pbxproj
+@@ -151,7 +151,7 @@
+ 		6EE8264F28E8AB2B003935BC /* DownloadVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadVM.swift; sourceTree = "<group>"; };
+ 		6EF893D428F34CD1004AB6D9 /* NetworkVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkVM.swift; sourceTree = "<group>"; };
+ 		81C2786C28D4A5A300E208D7 /* pt-br */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "pt-br"; path = "pt-br.lproj/Localizable.strings"; sourceTree = "<group>"; };
+-		8783CFF726B8C52D00171041 /* PlayCover.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PlayCover.app; sourceTree = BUILT_PRODUCTS_DIR; };
++		8783CFF726B8C52D00171041 /* PlayCover VRChat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "PlayCover VRChat.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+ 		8783CFFA26B8C52D00171041 /* PlayCoverApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayCoverApp.swift; sourceTree = "<group>"; };
+ 		8783CFFE26B8C52E00171041 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+ 		8783D00126B8C52E00171041 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+@@ -402,7 +402,7 @@
+ 		8783CFF826B8C52D00171041 /* Products */ = {
+ 			isa = PBXGroup;
+ 			children = (
+-				8783CFF726B8C52D00171041 /* PlayCover.app */,
++				8783CFF726B8C52D00171041 /* PlayCover VRChat.app */,
+ 			);
+ 			name = Products;
+ 			sourceTree = "<group>";
+@@ -475,8 +475,8 @@
+ 				68E48B99295708C800C39879 /* Injection */,
+ 				B44E8CD22C31C50200542038 /* SwiftSoup */,
+ 			);
+-			productName = PlayCover;
+-			productReference = 8783CFF726B8C52D00171041 /* PlayCover.app */;
++			productName = "PlayCover VRChat";
++			productReference = 8783CFF726B8C52D00171041 /* PlayCover VRChat.app */;
+ 			productType = "com.apple.product-type.application";
+ 		};
+ /* End PBXNativeTarget section */
+@@ -840,9 +840,9 @@
+ 				MARKETING_VERSION = 3.1.0;
+ 				ONLY_ACTIVE_ARCH = NO;
+ 				OTHER_LDFLAGS = "-ObjC";
+-				PRODUCT_BUNDLE_IDENTIFIER = io.playcover.PlayCover;
+-				PRODUCT_NAME = "$(TARGET_NAME)";
+-				PROVISIONING_PROFILE_SPECIFIER = "match Direct io.playcover.PlayCover macos";
++				PRODUCT_BUNDLE_IDENTIFIER = io.github.northstarxyzz.PlayCoverVRChat;
++				PRODUCT_NAME = "PlayCover VRChat";
++				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				RUN_DOCUMENTATION_COMPILER = NO;
+ 				SWIFT_ENFORCE_EXCLUSIVE_ACCESS = off;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "./PlayCover/PlayCover-Bridging-Header.h";
+@@ -943,9 +943,9 @@
+ 				MARKETING_VERSION = 3.1.0;
+ 				ONLY_ACTIVE_ARCH = NO;
+ 				OTHER_LDFLAGS = "-ObjC";
+-				PRODUCT_BUNDLE_IDENTIFIER = io.playcover.PlayCover;
+-				PRODUCT_NAME = "$(TARGET_NAME)";
+-				PROVISIONING_PROFILE_SPECIFIER = "match Direct io.playcover.PlayCover macos";
++				PRODUCT_BUNDLE_IDENTIFIER = io.github.northstarxyzz.PlayCoverVRChat;
++				PRODUCT_NAME = "PlayCover VRChat";
++				PROVISIONING_PROFILE_SPECIFIER = "";
+ 				RUN_DOCUMENTATION_COMPILER = NO;
+ 				SWIFT_ENFORCE_EXCLUSIVE_ACCESS = off;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "./PlayCover/PlayCover-Bridging-Header.h";
+diff --git a/PlayCover/AppInstaller/Installer.swift b/PlayCover/AppInstaller/Installer.swift
+index d0b732f..490cab8 100644
+--- a/PlayCover/AppInstaller/Installer.swift
++++ b/PlayCover/AppInstaller/Installer.swift
+@@ -61,13 +61,16 @@ class Installer {
+                 try ipa.allocateTempDir()
+ 
+                 let app = try ipa.unzip()
+-                let supportsPlayTools = !VRChatMemoryPolicyManifest.matches(
++                if VRChatMemoryPolicyManifest.matches(
+                     bundleIdentifier: app.info.bundleIdentifier
+-                )
++                ) {
++                    // VRChat must be supplied by the Patcher as the exact
++                    // already-compatible app bundle. The ordinary importer
++                    // converts, rewrites, injects and signs, so it is forbidden.
++                    throw VRChatReadOnlyLaunchError.importRequiresCompatibleCopy
++                }
+                 let installPlayTools: Bool
+-                if !supportsPlayTools {
+-                    installPlayTools = false
+-                } else if shouldShowPlayToolsPopup {
++                if shouldShowPlayToolsPopup {
+                     installPlayTools = await MainActor.run {
+                         installPlayToolsPopup()
+                     }
+@@ -98,9 +101,9 @@ class Installer {
+                     }
+                 }
+ 
+-                if export && supportsPlayTools {
++                if export {
+                     try PlayTools.injectInIPA(app.executable, payload: app.url)
+-                } else if !export && installPlayTools {
++                } else if installPlayTools {
+                     try await PlayTools.installInIPA(app.executable)
+                 }
+ 
+diff --git a/PlayCover/Info.plist b/PlayCover/Info.plist
+index 206eede..cca1c96 100644
+--- a/PlayCover/Info.plist
++++ b/PlayCover/Info.plist
+@@ -5,7 +5,7 @@
+ 	<key>CFBundleDevelopmentRegion</key>
+ 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+ 	<key>CFBundleDisplayName</key>
+-	<string>PlayCover</string>
++	<string>PlayCover VRChat</string>
+ 	<key>CFBundleDocumentTypes</key>
+ 	<array>
+ 		<dict>
+@@ -92,7 +92,7 @@
+ 			<key>UTTypeIcons</key>
+ 			<dict/>
+ 			<key>UTTypeIdentifier</key>
+-			<string>io.playcover.PlayCover-playmap</string>
++			<string>io.github.northstarxyzz.PlayCoverVRChat-playmap</string>
+ 			<key>UTTypeTagSpecification</key>
+ 			<dict>
+ 				<key>public.filename-extension</key>
+diff --git a/PlayCover/Model/PlayApp.swift b/PlayCover/Model/PlayApp.swift
+index 1e9bb61..9076a1e 100644
+--- a/PlayCover/Model/PlayApp.swift
++++ b/PlayCover/Model/PlayApp.swift
+@@ -30,8 +30,12 @@ class PlayApp: BaseApp {
+ 
+         keymapping.reloadKeymapCache()
+ 
+-        removeAlias()
+-        createAlias()
++        if !VRChatMemoryPolicyManifest.matches(
++            bundleIdentifier: info.bundleIdentifier
++        ) {
++            removeAlias()
++            createAlias()
++        }
+ 
+         loadDiscordIPC()
+     }
+@@ -51,7 +55,7 @@ class PlayApp: BaseApp {
+     // MARK: - Paths / Singletons
+     static let aliasDirectory = FileManager.default.homeDirectoryForCurrentUser
+         .appendingPathComponent("Applications")
+-        .appendingPathComponent("PlayCover")
++        .appendingPathComponent("PlayCover VRChat")
+ 
+     lazy var aliasURL = PlayApp.aliasDirectory.appendingPathComponent(name).appendingPathExtension("app")
+     lazy var playChainURL = KeyCover.playChainPath.appendingPathComponent(info.bundleIdentifier)
+@@ -76,6 +80,11 @@ class PlayApp: BaseApp {
+                 throw PlayCoverError.appMaliciousProhibited
+             }
+ 
++            if resolvedLaunchMode == .vrChatCompatible {
++                try await launchVRChatReadOnly()
++                return
++            }
++
+             AppsVM.shared.fetchApps()
+             if await VersionCheck.shared.checkNewVersion(myApp: self) { return }
+ 
+@@ -98,55 +107,57 @@ class PlayApp: BaseApp {
+             }
+ 
+             if try !PlayTools.isInstalled() {
+-                Log.shared.error("PlayTools are not installed! Please move PlayCover.app into Applications!")
++                Log.shared.error("PlayTools are not installed for this non-VRChat app.")
+             } else if try !Macho.isMachoValidArch(executable) {
+                 Log.shared.error("The app threw an error during conversion.")
+             } else {
+                 // Clear any debug-related env vars that could affect the launched app
+                 self.clearDebugAffectingEnvironment()
+ 
+-                if settings.openWithLLDB && resolvedLaunchMode == .standard {
++                if settings.openWithLLDB {
+                     try Shell.lldb(executable, withTerminalWindow: settings.openLLDBWithTerminal)
+-                } else if resolvedLaunchMode == .vrChatCompatible {
+-                    try await runVRChatCompatible()
+                 } else {
+                     runAppExec()
+                 }
+             }
+         } catch {
+-            if resolvedLaunchMode == .vrChatCompatible,
+-               let policyError = error as? VRChatMemoryPolicyClientError,
+-               policyError.shouldOfferControllerStartCommand {
+-                await MainActor.run {
+-                    presentControllerUnavailableAlert()
+-                }
+-            } else {
+-                Log.shared.error(error)
+-            }
++            // All VRChat failures are terminal. Never retry as a standard launch.
++            Log.shared.error(error)
+         }
+     }
+ 
+-    @MainActor
+-    private func presentControllerUnavailableAlert() {
+-        let command = VRChatMemoryPolicyManifest.controllerStartCommand
+-        let alert = NSAlert()
+-        alert.alertStyle = .warning
+-        alert.messageText = NSLocalizedString(
+-            "error.vrchatMemoryPolicy.controllerUnavailable.title", comment: ""
+-        )
+-        alert.informativeText = String(format: NSLocalizedString(
+-            "error.vrchatMemoryPolicy.controllerUnavailable.message", comment: ""
+-        ), command)
+-        alert.addButton(withTitle: NSLocalizedString(
+-            "error.vrchatMemoryPolicy.controllerUnavailable.copyCommand", comment: ""
+-        ))
+-        alert.addButton(withTitle: NSLocalizedString("button.Cancel", comment: ""))
+-
+-        if alert.runModal() == .alertFirstButtonReturn {
+-            let pasteboard = NSPasteboard.general
+-            pasteboard.clearContents()
+-            pasteboard.setString(command, forType: .string)
++    private func launchVRChatReadOnly() async throws {
++        guard !hasPlayTools() else {
++            throw VRChatReadOnlyLaunchError.repairRequired(
++                reason: "playtools_present"
++            )
+         }
++        guard try Entitlements.areEntitlementsValid(app: self) else {
++            throw VRChatReadOnlyLaunchError.repairRequired(
++                reason: "entitlements_mismatch"
++            )
++        }
++        guard try isInfoPlistSigned() else {
++            throw VRChatReadOnlyLaunchError.repairRequired(
++                reason: "info_plist_unsigned"
++            )
++        }
++        guard try isCodeSignatureValid() else {
++            throw VRChatReadOnlyLaunchError.repairRequired(
++                reason: "signature_invalid"
++            )
++        }
++        guard try Macho.isMachoValidArch(executable) else {
++            throw VRChatReadOnlyLaunchError.repairRequired(
++                reason: "architecture_invalid"
++            )
++        }
++
++        // KeyCover operates only on PlayCover's independent data container.
++        // None of the checks above or the launch below modifies the app bundle.
++        await unlockKeyCover()
++        clearDebugAffectingEnvironment()
++        try await runVRChatCompatible()
+     }
+ }
+ 
+@@ -225,7 +236,7 @@ extension PlayApp {
+         let runningApp: NSRunningApplication = try await withCheckedThrowingContinuation {
+             continuation in
+             NSWorkspace.shared.openApplication(
+-                at: aliasURL,
++                at: url,
+                 configuration: config,
+                 completionHandler: { runningApp, error in
+                     if let error = error {
+@@ -234,7 +245,7 @@ extension PlayApp {
+                     }
+                     guard let runningApp = runningApp else {
+                         continuation.resume(throwing: NSError(
+-                            domain: "io.playcover.PlayCover.LaunchServices",
++                            domain: "io.github.northstarxyzz.PlayCoverVRChat.LaunchServices",
+                             code: 1,
+                             userInfo: [NSLocalizedDescriptionKey: NSLocalizedString(
+                                 "error.launchServices.noApplication", comment: ""
+@@ -418,6 +429,21 @@ extension PlayApp {
+         try Shell.run("/usr/bin/codesign", "-dv", executable.path).contains("Info.plist entries")
+     }
+ 
++    func isCodeSignatureValid() throws -> Bool {
++        do {
++            _ = try Shell.run(
++                "/usr/bin/codesign",
++                "--verify",
++                "--deep",
++                "--strict",
++                url.path
++            )
++            return true
++        } catch {
++            return false
++        }
++    }
++
+     func showInFinder() {
+         URL(fileURLWithPath: url.path).showInFinderAndSelectLastComponent()
+     }
+diff --git a/PlayCover/Utils/AppIntegrity.swift b/PlayCover/Utils/AppIntegrity.swift
+index 3da702f..9d147a8 100644
+--- a/PlayCover/Utils/AppIntegrity.swift
++++ b/PlayCover/Utils/AppIntegrity.swift
+@@ -31,7 +31,9 @@ class AppIntegrity: ObservableObject {
+         Bundle.main.resourceURL?.deletingLastPathComponent().deletingLastPathComponent()
+     }
+ 
+-    private static var expectedUrl = URL(fileURLWithPath: "/Applications/PlayCover.app")
++    private static var expectedUrl = URL(
++        fileURLWithPath: "/Applications/PlayCover VRChat.app"
++    )
+ 
+     private static var insideAppsFolder: Bool {
+         if let url = appUrl {
+diff --git a/PlayCover/Utils/Extensions/PlayAppExtensions.swift b/PlayCover/Utils/Extensions/PlayAppExtensions.swift
+index 13a80e5..2b17b67 100644
+--- a/PlayCover/Utils/Extensions/PlayAppExtensions.swift
++++ b/PlayCover/Utils/Extensions/PlayAppExtensions.swift
+@@ -52,6 +52,9 @@ extension PlayApp {
+     }
+ 
+     func createAlias() {
++        guard !VRChatMemoryPolicyManifest.matches(
++            bundleIdentifier: info.bundleIdentifier
++        ) else { return }
+         do {
+             try FileManager.default.createDirectory(atPath: aliasURL.path,
+                                                     withIntermediateDirectories: true,
+@@ -67,6 +70,9 @@ extension PlayApp {
+     }
+ 
+     func removeAlias() {
++        guard !VRChatMemoryPolicyManifest.matches(
++            bundleIdentifier: info.bundleIdentifier
++        ) else { return }
+         FileManager.default.delete(at: aliasURL)
+     }
+ }
+diff --git a/PlayCover/Utils/Extensions/URLExtensions.swift b/PlayCover/Utils/Extensions/URLExtensions.swift
+index 866c908..fc010db 100644
+--- a/PlayCover/Utils/Extensions/URLExtensions.swift
++++ b/PlayCover/Utils/Extensions/URLExtensions.swift
+@@ -86,7 +86,7 @@ extension URL {
+         }
+ 
+         let queue = OperationQueue()
+-        queue.name = "io.playcover.PlayCover.URLExtension"
++        queue.name = "io.github.northstarxyzz.PlayCoverVRChat.URLExtension"
+         queue.qualityOfService = .userInitiated
+         queue.maxConcurrentOperationCount = 15
+ 
+diff --git a/PlayCover/Utils/Keymapping.swift b/PlayCover/Utils/Keymapping.swift
+index 4403fc3..a0100c4 100644
+--- a/PlayCover/Utils/Keymapping.swift
++++ b/PlayCover/Utils/Keymapping.swift
+@@ -210,7 +210,9 @@ class Keymapping {
+         openPanel.allowsMultipleSelection = false
+         openPanel.canChooseDirectories = false
+         openPanel.canCreateDirectories = true
+-        openPanel.allowedContentTypes = [UTType(exportedAs: "io.playcover.PlayCover-playmap")]
++        openPanel.allowedContentTypes = [
++            UTType(exportedAs: "io.github.northstarxyzz.PlayCoverVRChat-playmap")
++        ]
+         openPanel.title = NSLocalizedString("playapp.importKm", comment: "")
+ 
+         openPanel.begin { result in
+@@ -260,7 +262,9 @@ class Keymapping {
+         savePanel.title = NSLocalizedString("playapp.exportKm", comment: "")
+         savePanel.nameFieldLabel = NSLocalizedString("playapp.exportKmPanel.fieldLabel", comment: "")
+         savePanel.nameFieldStringValue = info.displayName
+-        savePanel.allowedContentTypes = [UTType(exportedAs: "io.playcover.PlayCover-playmap")]
++        savePanel.allowedContentTypes = [
++            UTType(exportedAs: "io.github.northstarxyzz.PlayCoverVRChat-playmap")
++        ]
+         savePanel.canCreateDirectories = true
+         savePanel.isExtensionHidden = false
+ 
+diff --git a/PlayCover/Utils/PlayTools.swift b/PlayCover/Utils/PlayTools.swift
+index 915222a..dcf5521 100644
+--- a/PlayCover/Utils/PlayTools.swift
++++ b/PlayCover/Utils/PlayTools.swift
+@@ -29,7 +29,7 @@ class PlayTools {
+         let playCoverPath = FileManager.default.homeDirectoryForCurrentUser
+             .appendingPathComponent("Library")
+             .appendingPathComponent("Containers")
+-            .appendingPathComponent("io.playcover.PlayCover")
++            .appendingPathComponent("io.github.northstarxyzz.PlayCoverVRChat")
+         if !FileManager.default.fileExists(atPath: playCoverPath.path) {
+             do {
+                 try FileManager.default.createDirectory(at: playCoverPath,
+diff --git a/PlayCover/ViewModel/AppsVM.swift b/PlayCover/ViewModel/AppsVM.swift
+index 1daaae7..c3f1aa5 100644
+--- a/PlayCover/ViewModel/AppsVM.swift
++++ b/PlayCover/ViewModel/AppsVM.swift
+@@ -13,7 +13,8 @@ class AppsVM: ObservableObject {
+ 
+     private init() {
+         try? AppsVM.ensureBaseDirectoriesExist()
+-        PlayTools.installOnSystem()
++        // This customized build must not install or replace the process-global
++        // PlayTools framework. VRChat is always launched without injection.
+         fetchApps()
+     }
+ 
+diff --git a/PlayCover/Views/App Views/PlayAppView.swift b/PlayCover/Views/App Views/PlayAppView.swift
+index c8c8f35..973bbf2 100644
+--- a/PlayCover/Views/App Views/PlayAppView.swift	
++++ b/PlayCover/Views/App Views/PlayAppView.swift	
+@@ -29,14 +29,6 @@ struct PlayAppView: View {
+                 selected = viewModel.app
+             })
+             .contextMenu {
+-                if VRChatMemoryPolicyManifest.matches(
+-                    bundleIdentifier: viewModel.app.info.bundleIdentifier
+-                ) {
+-                    Button("playapp.launch.standard", systemImage: "play.fill") {
+-                        launchApp(mode: .standard)
+-                    }
+-                    Divider()
+-                }
+                 Button("playapp.settings", systemImage: "gear", action: {
+                     viewModel.showSettings.toggle()
+                 })
+diff --git a/PlayCover/Views/AppSettingsView.swift b/PlayCover/Views/AppSettingsView.swift
+index dadbe96..ca8a160 100644
+--- a/PlayCover/Views/AppSettingsView.swift
++++ b/PlayCover/Views/AppSettingsView.swift
+@@ -872,7 +872,18 @@ struct InfoView: View {
+             HStack {
+                 Text("settings.info.alias")
+                 Spacer()
+-                Text("\(PlayApp.aliasDirectory.appendingPathComponent(info.bundleIdentifier))")
++                if VRChatMemoryPolicyManifest.matches(
++                    bundleIdentifier: info.bundleIdentifier
++                ) {
++                    Text("settings.info.alias.disabledForVRChat")
++                } else {
++                    Text(
++                        PlayApp.aliasDirectory
++                            .appendingPathComponent(info.displayName)
++                            .appendingPathExtension("app")
++                            .path
++                    )
++                }
+             }
+         }
+         .listStyle(.bordered(alternatesRowBackgrounds: true))
+diff --git a/PlayCover/Views/Settings/PlayCoverSettingsView.swift b/PlayCover/Views/Settings/PlayCoverSettingsView.swift
+index dfd5eb9..bb75a73 100644
+--- a/PlayCover/Views/Settings/PlayCoverSettingsView.swift
++++ b/PlayCover/Views/Settings/PlayCoverSettingsView.swift
+@@ -11,11 +11,19 @@ struct PlayCoverSettingsView: View {
+     @EnvironmentObject var storeVM: StoreVM
+ 
+     private enum Tabs: Hashable {
+-        case updates, ipasource, keyCover, install, uninstall
++        case vrChatMemory, updates, ipasource, keyCover, install, uninstall
+     }
+ 
+     var body: some View {
+         TabView {
++            VRChatMemoryPolicySettingsView()
++                .tabItem {
++                    Label(
++                        "preferences.tab.vrchatMemoryPolicy",
++                        systemImage: "memorychip"
++                    )
++                }
++                .tag(Tabs.vrChatMemory)
+             UpdateSettings()
+                 .tabItem {
+                     Label("preferences.tab.updates", systemImage: "square.and.arrow.down")
+diff --git a/PlayCover/en.lproj/Localizable.strings b/PlayCover/en.lproj/Localizable.strings
+index b2806ba..0533f2a 100644
+--- a/PlayCover/en.lproj/Localizable.strings
++++ b/PlayCover/en.lproj/Localizable.strings
+@@ -336,7 +336,6 @@
+ "alert.start.anyway" = "Start Anyway";
+ "alert.version.title" = "New Version Available";
+ "alert.version.text" = "A new version for %@ is available. Do you want to download it?";
+-"playapp.launch.standard" = "Launch VRChat without memory compatibility";
+ "error.launchServices.noApplication" = "LaunchServices did not return a running application.";
+ "error.vrchatMemoryPolicy.wrongBundle" = "Memory compatibility does not support bundle %@.";
+ "error.vrchatMemoryPolicy.busy" = "A VRChat memory-compatibility session is already active.";
+@@ -346,14 +345,42 @@
+ "error.vrchatMemoryPolicy.protocol" = "The VRChat controller protocol failed (%@).";
+ "error.vrchatMemoryPolicy.cancel" = "Could not cancel the controller's pre-bind wait: %@";
+ "error.vrchatMemoryPolicy.lateCancel" = "The controller already bound the target; PlayCover will not send a late cancellation.";
+-"patch.brand.badge" = "VRChat Patch";
+-"patch.brand.help" = "This PlayCover build includes the reviewed VRChat memory compatibility patch.";
+-"patch.about.menu" = "About PlayCover VRChat Patch";
+-"patch.about.applicationName" = "PlayCover — VRChat Patch";
+-"patch.about.notice" = "Patched build for VRChat memory compatibility. Official PlayCover updates are disabled to preserve this patch.";
++"patch.brand.badge" = "PlayCover VRChat";
++"patch.brand.help" = "This independent PlayCover VRChat build includes the reviewed memory compatibility patch.";
++"patch.about.menu" = "About PlayCover VRChat";
++"patch.about.applicationName" = "PlayCover VRChat";
++"patch.about.notice" = "Independent PlayCover build for read-only VRChat memory compatibility. Official PlayCover updates are disabled to preserve the reviewed patch.";
+ "patch.updates.disabled.title" = "Official updates are disabled";
+-"patch.updates.disabled.detail" = "This VRChat Patch build does not use Sparkle because an official update would overwrite the reviewed patch.";
+-"error.vrchatMemoryPolicy.controllerUnavailable.title" = "VRChat controller is not running";
+-"error.vrchatMemoryPolicy.controllerUnavailable.message" = "Start it in Terminal, then retry compatibility launch:\n%@";
+-"error.vrchatMemoryPolicy.controllerUnavailable.copyCommand" = "Copy Command";
+-
++"patch.updates.disabled.detail" = "PlayCover VRChat does not use Sparkle because an official PlayCover update would overwrite the reviewed patch.";
++"preferences.tab.vrchatMemoryPolicy" = "VRChat Memory";
++"vrchatMemoryPolicy.mode" = "Memory";
++"vrchatMemoryPolicy.mode.automatic" = "Automatic (75%)";
++"vrchatMemoryPolicy.mode.custom" = "Custom";
++"vrchatMemoryPolicy.safeMaximum" = "Safe maximum";
++"vrchatMemoryPolicy.customLimit" = "Custom limit";
++"vrchatMemoryPolicy.physicalMemoryUnavailable" = "Physical memory is unavailable.";
++"vrchatMemoryPolicy.invalidSelection" = "Choose 4 GiB through the safe maximum.";
++"vrchatMemoryPolicy.lowMemoryWarning" = "Below 8 GiB may affect loading.";
++"vrchatMemoryPolicy.nextSession" = "Changes apply on the next launch.";
++"vrchatMemoryPolicy.authorization.developerAlpha" = "Developer authorization";
++"vrchatMemoryPolicy.authorization.detail" = "Admin approval may be requested. Only the verified root runner is used.";
++"vrchatMemoryPolicy.smappservice.unavailable" = "Background helper unavailable in this Alpha.";
++"settings.info.alias.disabledForVRChat" = "Disabled for read-only VRChat launch";
++"error.vrchatMemoryPolicy.physicalMemory" = "Could not read physical memory: %@";
++"error.vrchatMemoryPolicy.insufficientMemory" = "This Mac has no supported memory limit; the 75%% safe maximum is %llu GiB.";
++"error.vrchatMemoryPolicy.physicalMemoryRange" = "The physical-memory value is outside the supported range.";
++"error.vrchatMemoryPolicy.invalidMode" = "The stored VRChat memory-policy mode is invalid: %@";
++"error.vrchatMemoryPolicy.invalidCustom" = "The stored custom VRChat limit is invalid: %d GiB.";
++"error.vrchatMemoryPolicy.customRange" = "The requested %d GiB limit is outside 4 through the current %d GiB safe maximum.";
++"error.vrchatMemoryPolicy.unsafeRunner" = "The privileged runner failed ownership validation at %@ (%@).";
++"error.vrchatMemoryPolicy.authorizationUnavailable" = "The developer Alpha authorization API is unavailable on this system.";
++"error.vrchatMemoryPolicy.authorizationCreate" = "macOS authorization could not be created (status %d).";
++"error.vrchatMemoryPolicy.authorizationDenied" = "Administrator authorization was denied or cancelled (status %d).";
++"error.vrchatMemoryPolicy.authorizationExecute" = "The fixed privileged runner could not be started (status %d).";
++"error.vrchatReadOnly.importRequired" = "VRChat cannot be installed or exported by this customized PlayCover because that path would rewrite the app. Import the exact compatible copy with PlayCover VRChat Patcher.";
++"error.vrchatReadOnly.repairRequired" = "Read-only VRChat validation found that a repair would be required (%@). Launch was refused without modifying the app.";
++"error.vrchatReadOnly.reason.playtools_present" = "PlayTools is present";
++"error.vrchatReadOnly.reason.entitlements_mismatch" = "entitlements differ";
++"error.vrchatReadOnly.reason.info_plist_unsigned" = "Info.plist is not sealed";
++"error.vrchatReadOnly.reason.signature_invalid" = "the code signature is invalid";
++"error.vrchatReadOnly.reason.architecture_invalid" = "the executable platform or architecture is incompatible";
+diff --git a/PlayCover/zh-Hans.lproj/Localizable.strings b/PlayCover/zh-Hans.lproj/Localizable.strings
+index 1473c89..cd35e30 100644
+--- a/PlayCover/zh-Hans.lproj/Localizable.strings
++++ b/PlayCover/zh-Hans.lproj/Localizable.strings
+@@ -386,7 +386,6 @@
+ "ipaLibrary.AlphabeticalSort" = "按字母顺序排列应用来源";
+ "alert.install.anyway" = "仍然安装";
+ "alert.open.appstore" = "打开 Mac App Store";
+-"playapp.launch.standard" = "不使用内存兼容启动 VRChat";
+ "error.launchServices.noApplication" = "LaunchServices 未返回正在运行的应用。";
+ "error.vrchatMemoryPolicy.wrongBundle" = "内存兼容不支持 bundle %@。";
+ "error.vrchatMemoryPolicy.busy" = "已有 VRChat 内存兼容会话正在运行。";
+@@ -396,13 +395,42 @@
+ "error.vrchatMemoryPolicy.protocol" = "VRChat controller 协议失败（%@）。";
+ "error.vrchatMemoryPolicy.cancel" = "无法取消 controller 的绑定前等待：%@";
+ "error.vrchatMemoryPolicy.lateCancel" = "controller 已绑定目标；PlayCover 不会发送过期取消。";
+-"patch.brand.badge" = "VRChat Patch";
+-"patch.brand.help" = "此 PlayCover 构建包含已审阅的 VRChat 内存兼容补丁。";
+-"patch.about.menu" = "关于 PlayCover VRChat Patch";
+-"patch.about.applicationName" = "PlayCover — VRChat Patch";
+-"patch.about.notice" = "用于 VRChat 内存兼容的补丁构建。为避免覆盖补丁，官方 PlayCover 更新已禁用。";
++"patch.brand.badge" = "PlayCover VRChat";
++"patch.brand.help" = "这是使用独立身份和资料库的 PlayCover VRChat 内存兼容构建。";
++"patch.about.menu" = "关于 PlayCover VRChat";
++"patch.about.applicationName" = "PlayCover VRChat";
++"patch.about.notice" = "用于只读 VRChat 内存兼容的独立 PlayCover 构建。为保留已审阅补丁，官方 PlayCover 更新已禁用。";
+ "patch.updates.disabled.title" = "官方更新已禁用";
+-"patch.updates.disabled.detail" = "此 VRChat Patch 构建不使用 Sparkle，因为官方更新会覆盖已审阅的补丁。";
+-"error.vrchatMemoryPolicy.controllerUnavailable.title" = "VRChat controller 未运行";
+-"error.vrchatMemoryPolicy.controllerUnavailable.message" = "请在终端中启动它，然后重试兼容启动：\n%@";
+-"error.vrchatMemoryPolicy.controllerUnavailable.copyCommand" = "复制命令";
++"patch.updates.disabled.detail" = "PlayCover VRChat 不使用 Sparkle，因为官方 PlayCover 更新会覆盖已审阅补丁。";
++"preferences.tab.vrchatMemoryPolicy" = "VRChat 内存";
++"vrchatMemoryPolicy.mode" = "内存";
++"vrchatMemoryPolicy.mode.automatic" = "自动（75%）";
++"vrchatMemoryPolicy.mode.custom" = "自定义";
++"vrchatMemoryPolicy.safeMaximum" = "安全上限";
++"vrchatMemoryPolicy.customLimit" = "自定义上限";
++"vrchatMemoryPolicy.physicalMemoryUnavailable" = "无法读取物理内存。";
++"vrchatMemoryPolicy.invalidSelection" = "范围无效：4 GiB 至安全上限。";
++"vrchatMemoryPolicy.lowMemoryWarning" = "低于 8 GiB 可能影响加载。";
++"vrchatMemoryPolicy.nextSession" = "下次启动生效。";
++"vrchatMemoryPolicy.authorization.developerAlpha" = "开发者授权";
++"vrchatMemoryPolicy.authorization.detail" = "启动时可能需要管理员授权；仅使用已验证的 root runner。";
++"vrchatMemoryPolicy.smappservice.unavailable" = "当前 Alpha 不提供后台 helper。";
++"settings.info.alias.disabledForVRChat" = "只读 VRChat 启动已禁用别名";
++"error.vrchatMemoryPolicy.physicalMemory" = "无法读取物理内存：%@";
++"error.vrchatMemoryPolicy.insufficientMemory" = "此 Mac 没有可支持的内存限制；75%% 安全上限为 %llu GiB。";
++"error.vrchatMemoryPolicy.physicalMemoryRange" = "物理内存数值超出支持范围。";
++"error.vrchatMemoryPolicy.invalidMode" = "保存的 VRChat 内存策略模式无效：%@";
++"error.vrchatMemoryPolicy.invalidCustom" = "保存的 VRChat 自定义限制无效：%d GiB。";
++"error.vrchatMemoryPolicy.customRange" = "请求的 %d GiB 不在 4 GiB 到当前 %d GiB 安全上限内。";
++"error.vrchatMemoryPolicy.unsafeRunner" = "特权 runner 的所有权校验失败：%@（%@）。";
++"error.vrchatMemoryPolicy.authorizationUnavailable" = "此系统无法使用开发者 Alpha 授权 API。";
++"error.vrchatMemoryPolicy.authorizationCreate" = "无法创建 macOS 授权（状态 %d）。";
++"error.vrchatMemoryPolicy.authorizationDenied" = "管理员授权被拒绝或取消（状态 %d）。";
++"error.vrchatMemoryPolicy.authorizationExecute" = "无法启动固定特权 runner（状态 %d）。";
++"error.vrchatReadOnly.importRequired" = "定制版 PlayCover 不能安装或导出 VRChat，因为该流程会重写应用。请使用 PlayCover VRChat Patcher 导入精确兼容副本。";
++"error.vrchatReadOnly.repairRequired" = "只读 VRChat 校验发现需要修复（%@）；程序没有修改应用，并已拒绝启动。";
++"error.vrchatReadOnly.reason.playtools_present" = "检测到 PlayTools";
++"error.vrchatReadOnly.reason.entitlements_mismatch" = "entitlements 不一致";
++"error.vrchatReadOnly.reason.info_plist_unsigned" = "Info.plist 未被签名封装";
++"error.vrchatReadOnly.reason.signature_invalid" = "代码签名无效";
++"error.vrchatReadOnly.reason.architecture_invalid" = "可执行文件的平台或架构不兼容";

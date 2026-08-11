@@ -1,0 +1,68 @@
+{
+  "originHash" : "7792f4b5e5554a228b4825fefabfb3b10bc7a5406ff2696ba6c020605b116852",
+  "pins" : [
+    {
+      "identity" : "cachedasyncimage",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/bullinnyc/CachedAsyncImage",
+      "state" : {
+        "revision" : "cb253e111528c082381af54b67dab7a15eefde16",
+        "version" : "2.6.0"
+      }
+    },
+    {
+      "identity" : "datacache",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/huynguyencong/DataCache",
+      "state" : {
+        "revision" : "cdef39b1f7f539ff722e7954746b2876ef12178c",
+        "version" : "1.7.0"
+      }
+    },
+    {
+      "identity" : "download-manager",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shapedbyiris/download-manager.git",
+      "state" : {
+        "revision" : "1f6c3ebbc361311e5abae53947ac5ade7542a575",
+        "version" : "0.1.0"
+      }
+    },
+    {
+      "identity" : "inject",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/paradiseduo/inject",
+      "state" : {
+        "revision" : "4ee23a45f25763f61903b1111bce7605617a4dd7",
+        "version" : "1.2.1"
+      }
+    },
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser",
+      "state" : {
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
+      }
+    },
+    {
+      "identity" : "swiftsoup",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/PlayCover/SwiftSoup",
+      "state" : {
+        "revision" : "6d808c0522471d9f8892c85601164ed5b462f8c0"
+      }
+    },
+    {
+      "identity" : "yams",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jpsim/Yams.git",
+      "state" : {
+        "revision" : "3d6871d5b4a5cd519adf233fbb576e0a2af71c17",
+        "version" : "5.4.0"
+      }
+    }
+  ],
+  "version" : 3
+}

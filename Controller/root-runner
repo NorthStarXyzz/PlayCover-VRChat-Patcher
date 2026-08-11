@@ -1,0 +1,850 @@
+#!/bin/zsh -p
+
+set -eu
+setopt NO_RCS PIPE_FAIL
+umask 077
+
+runner=/usr/local/bin/playcover-vrchat-memory-policy
+package_dir=/usr/local/libexec/playcover-vrchat-memory-policy
+controller="$package_dir/controller"
+attestation="$package_dir/installation.json"
+runtime_dir=/private/var/run/io.github.northstarxyzz.pcvrpatcher
+lock_file="$runtime_dir/controller.lock"
+session_socket="$runtime_dir/session.sock"
+uninstall_journal=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.uninstall
+install_journal=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.install
+operation_claim=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.operation
+receipt_id=io.github.northstarxyzz.pcvrpatcher.memory-policy
+receipt_version=0.1.0
+expected_controller_sha=824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c
+expected_attestation_sha=4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5
+expected_journal_sha=c66d1be68d75822cf6c9b91f47aaf54649c263d59c5a0562e21acc224cefaa5f
+journal_contents=$'PCVR-UNINSTALL/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\npackageVersion=0.1.0\ncontrollerBuildID=25G70-vrchat-2026.2.30300-1365-r6\n'
+expected_operation_claim_sha=c68b37a41ecacd9c60f322dabe15ce1d7bbcff5a3dd9e9926ce014b9c74d13c3
+operation_claim_contents=$'PCVR-OPERATION-CLAIM/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\ncontrollerBuildID=25G70-vrchat-2026.2.30300-1365-r6\n'
+journal_temp=''
+operation_claim_temp=''
+claim_fd=''
+fixed_claim_fd=''
+owned_claim_identity=''
+owned_journal_identity=''
+owned_runner_identity=''
+owned_runner_sha=''
+
+verify_no_acl() {
+    local target=$1
+    local listing
+    local acl_count
+
+    if ! listing=$(/bin/ls -lde "$target" 2>/dev/null); then
+        print -u2 -- "Could not inspect ACLs: $target"
+        exit 79
+    fi
+    acl_count=$(print -r -- "$listing" | /usr/bin/awk \
+        'NR > 1 && $1 ~ /^[0-9]+:$/ { count++ } END { print count + 0 }')
+    if [[ "$acl_count" != 0 ]]; then
+        print -u2 -- "Refusing path with an extended ACL: $target"
+        exit 79
+    fi
+}
+
+verify_directory() {
+    local target=$1
+    local expected=$2
+    local metadata
+
+    metadata=$(/usr/bin/stat -f '%u:%g:%OLp:%HT:%Sf' "$target" 2>/dev/null || true)
+    if [[ "$metadata" != "$expected" ]]; then
+        print -u2 -- "Unsafe installed directory metadata: $target ($metadata)"
+        exit 79
+    fi
+    verify_no_acl "$target"
+}
+
+verify_file() {
+    local target=$1
+    local expected_mode=$2
+    local expected_sha=$3
+    local expected_links=${4:-1}
+    local metadata
+    local actual_sha
+
+    metadata=$(/usr/bin/stat -f '%u:%g:%OLp:%HT:%Sf:%l' "$target" 2>/dev/null || true)
+    if [[ "$metadata" != "0:0:${expected_mode}:Regular File:-:${expected_links}" ]]; then
+        print -u2 -- "Unsafe installed file metadata: $target ($metadata)"
+        exit 79
+    fi
+    verify_no_acl "$target"
+    actual_sha=$(/usr/bin/shasum -a 256 "$target" | /usr/bin/awk '{print $1}')
+    if [[ "$actual_sha" != "$expected_sha" ]]; then
+        print -u2 -- "Installed SHA-256 mismatch: $target"
+        exit 79
+    fi
+}
+
+verify_root_regular_metadata() {
+    local target=$1
+    local expected_mode=$2
+    local metadata
+
+    metadata=$(/usr/bin/stat -f '%u:%g:%OLp:%HT:%Sf:%l' "$target" 2>/dev/null || true)
+    if [[ "$metadata" != "0:0:${expected_mode}:Regular File:-:1" ]]; then
+        print -u2 -- "Unsafe root-owned transaction object: $target ($metadata)"
+        exit 79
+    fi
+    verify_no_acl "$target"
+}
+
+verify_no_xattrs() {
+    local attributes
+    local unsafe_attribute
+
+    attributes=$(/usr/bin/xattr "$1" 2>/dev/null) || {
+        print -u2 -- "Could not inspect extended attributes: $1"
+        exit 79
+    }
+    unsafe_attribute=$(print -r -- "$attributes" | /usr/bin/awk \
+        '$0 != "" && $0 != "com.apple.provenance" { print; exit }')
+    [[ -z "$unsafe_attribute" ]] || {
+        print -u2 -- "Unexpected extended attributes: $1 ($unsafe_attribute)"
+        exit 79
+    }
+}
+
+clear_and_verify_no_xattrs() {
+    local target=$1
+    local attributes
+    local unsafe_attribute
+    local attempt
+
+    # macOS can attach provenance metadata just after a hard-link is
+    # published.  A single xattr -c followed by an immediate read races that
+    # attachment and makes an otherwise exact claim look corrupted.  Keep
+    # the policy fail-closed: clear only the exact root-owned claim we already
+    # verified, retry for a short bounded window, and reject it if attributes
+    # remain or cannot be inspected.
+    for attempt in 1 2 3 4 5 6 7 8; do
+        /usr/bin/xattr -c "$target" 2>/dev/null || true
+        if attributes=$(/usr/bin/xattr "$target" 2>/dev/null); then
+            unsafe_attribute=$(print -r -- "$attributes" | /usr/bin/awk \
+                '$0 != "" && $0 != "com.apple.provenance" { print; exit }')
+            [[ -z "$unsafe_attribute" ]] && return 0
+        fi
+        (( attempt < 8 )) && /bin/sleep 0.1
+    done
+    print -u2 -- "Unexpected extended attributes: $target"
+    return 1
+}
+
+require_absent() {
+    local target=$1
+    if [[ -e "$target" || -L "$target" ]]; then
+        print -u2 -- "Expected an absent object: $target"
+        exit 79
+    fi
+}
+
+receipt_state() {
+    local receipts
+    local receipt_plist
+    local installed_version
+
+    if ! receipts=$(/usr/sbin/pkgutil --pkgs 2>/dev/null); then
+        print -u2 -- "Could not inspect Installer receipts."
+        exit 74
+    fi
+    if ! print -r -- "$receipts" | /usr/bin/grep -F -x -q "$receipt_id"; then
+        print -- absent
+        return
+    fi
+    if ! receipt_plist=$(/usr/sbin/pkgutil --pkg-info-plist "$receipt_id" 2>/dev/null); then
+        print -u2 -- "The controller package receipt could not be read."
+        exit 79
+    fi
+    if ! installed_version=$(print -rn -- "$receipt_plist" | \
+        /usr/bin/plutil -extract pkg-version raw -o - - 2>/dev/null); then
+        print -u2 -- "The controller package receipt has no readable version."
+        exit 79
+    fi
+    if [[ "$installed_version" != "$receipt_version" ]]; then
+        print -u2 -- "Refusing unknown controller package receipt version: $installed_version"
+        exit 79
+    fi
+    print -- present
+}
+
+verify_package_entries() {
+    local entry
+    local name
+
+    while IFS= read -r entry; do
+        [[ -n "$entry" ]] || continue
+        name=${entry:t}
+        case "$name" in
+            controller|installation.json)
+                ;;
+            *)
+                print -u2 -- "Refusing unexpected package object: $entry"
+                exit 79
+                ;;
+        esac
+    done < <(/usr/bin/find "$package_dir" -mindepth 1 -maxdepth 1 -print | \
+        LC_ALL=C /usr/bin/sort)
+}
+
+journal_temporaries() {
+    setopt local_options null_glob
+    local candidate
+    for candidate in /private/var/db/.io.github.northstarxyzz.pcvrpatcher.memory-policy.uninstall.new.*; do
+        [[ -e "$candidate" || -L "$candidate" ]] || continue
+        print -r -- "$candidate"
+    done | LC_ALL=C /usr/bin/sort
+}
+
+repair_orphaned_journal_temp() {
+    local candidates=()
+    local candidate
+    local metadata
+    local journal_identity
+    local candidate_identity
+
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] && candidates+=("$candidate")
+    done < <(journal_temporaries)
+    if (( ${#candidates} == 0 )); then
+        return
+    fi
+    if (( ${#candidates} != 1 )); then
+        print -u2 -- "Refusing multiple orphaned uninstall journal temporaries."
+        exit 79
+    fi
+    candidate=${candidates[1]}
+
+    if [[ -e "$uninstall_journal" || -L "$uninstall_journal" ]]; then
+        verify_file "$candidate" 400 "$expected_journal_sha" 2
+        verify_file "$uninstall_journal" 400 "$expected_journal_sha" 2
+        candidate_identity=$(/usr/bin/stat -f '%d:%i' "$candidate")
+        journal_identity=$(/usr/bin/stat -f '%d:%i' "$uninstall_journal")
+        if [[ "$candidate_identity" != "$journal_identity" ]]; then
+            print -u2 -- "Journal temporary does not identify the installed journal."
+            exit 79
+        fi
+        /bin/unlink "$candidate"
+        verify_file "$uninstall_journal" 400 "$expected_journal_sha"
+        return
+    fi
+
+    metadata=$(/usr/bin/stat -f '%u:%OLp:%HT:%Sf:%l' "$candidate" 2>/dev/null || true)
+    case "$metadata" in
+        0:400:'Regular File':-:1|0:600:'Regular File':-:1)
+            verify_no_acl "$candidate"
+            /bin/unlink "$candidate"
+            ;;
+        *)
+            print -u2 -- "Refusing unsafe orphaned journal temporary: $candidate ($metadata)"
+            exit 79
+            ;;
+    esac
+}
+
+create_uninstall_journal() {
+    verify_owned_operation_claim
+    require_absent "$install_journal"
+    require_absent "$uninstall_journal"
+    journal_temp=$(/usr/bin/mktemp \
+        /private/var/db/.io.github.northstarxyzz.pcvrpatcher.memory-policy.uninstall.new.XXXXXX)
+    print -rn -- "$journal_contents" > "$journal_temp"
+    /usr/sbin/chown root:wheel "$journal_temp"
+    /bin/chmod 0400 "$journal_temp"
+    /usr/bin/chflags 0 "$journal_temp"
+    /bin/chmod -N "$journal_temp"
+    clear_and_verify_no_xattrs "$journal_temp"
+    verify_file "$journal_temp" 400 "$expected_journal_sha"
+    if ! /bin/ln "$journal_temp" "$uninstall_journal"; then
+        print -u2 -- "Another uninstall transaction owns the journal."
+        exit 75
+    fi
+    /bin/unlink "$journal_temp"
+    journal_temp=''
+    verify_file "$uninstall_journal" 400 "$expected_journal_sha"
+    owned_journal_identity=$(/usr/bin/stat -f '%d:%i' "$uninstall_journal")
+}
+
+bind_uninstall_journal() {
+    verify_file "$uninstall_journal" 400 "$expected_journal_sha"
+    owned_journal_identity=$(/usr/bin/stat -f '%d:%i' "$uninstall_journal")
+}
+
+verify_owned_uninstall_transition() {
+    local current_identity
+
+    verify_owned_operation_claim
+    require_absent "$install_journal"
+    [[ -n "$owned_journal_identity" ]] || {
+        print -u2 -- "This process has not bound the uninstall journal."
+        exit 79
+    }
+    verify_file "$uninstall_journal" 400 "$expected_journal_sha"
+    current_identity=$(/usr/bin/stat -f '%d:%i' "$uninstall_journal")
+    [[ "$current_identity" == "$owned_journal_identity" ]] || {
+        print -u2 -- "Uninstall journal inode changed while owned."
+        exit 79
+    }
+}
+
+bind_runner_identity() {
+    verify_root_regular_metadata "$runner" 555
+    owned_runner_identity=$(/usr/bin/stat -f '%d:%i' "$runner")
+    owned_runner_sha=$(/usr/bin/shasum -a 256 "$runner" | /usr/bin/awk '{print $1}')
+}
+
+verify_owned_runner() {
+    local current_identity
+
+    verify_root_regular_metadata "$runner" 555
+    current_identity=$(/usr/bin/stat -f '%d:%i' "$runner")
+    [[ -n "$owned_runner_identity" && "$current_identity" == "$owned_runner_identity" ]] || {
+        print -u2 -- "Installed runner inode changed during uninstall."
+        exit 79
+    }
+    [[ -n "$owned_runner_sha" &&
+       $(/usr/bin/shasum -a 256 "$runner" | /usr/bin/awk '{print $1}') ==
+       "$owned_runner_sha" ]] || {
+        print -u2 -- "Installed runner contents changed during uninstall."
+        exit 79
+    }
+}
+
+operation_claim_temporaries() {
+    setopt local_options null_glob
+    local candidate
+    for candidate in /private/var/db/.io.github.northstarxyzz.pcvrpatcher.memory-policy.operation.new.*; do
+        [[ -e "$candidate" || -L "$candidate" ]] || continue
+        print -r -- "$candidate"
+    done | LC_ALL=C /usr/bin/sort
+}
+
+holder_state() {
+    local target=$1
+    local holders
+    local result
+
+    if [[ ! -e "$target" && ! -L "$target" ]]; then
+        print -- inactive
+        return
+    fi
+    set +e
+    holders=$(/usr/sbin/lsof -t "$target" 2>&1)
+    result=$?
+    set -e
+    if (( result == 0 )) && [[ -n "$holders" ]]; then
+        print -- active
+        return
+    fi
+    if (( result == 1 )) && [[ -z "$holders" ]]; then
+        print -- inactive
+        return
+    fi
+    print -u2 -- "Could not safely inspect an operation owner."
+    exit 74
+}
+
+verify_operation_claim() {
+    verify_file "$operation_claim" 400 "$expected_operation_claim_sha"
+    verify_no_xattrs "$operation_claim"
+}
+
+remove_exact_stale_operation_claim() {
+    local stale_identity
+    local current_identity
+
+    # A claim can survive a cancelled/aborted authorization with harmless
+    # filesystem metadata attached by macOS (for example provenance).  Do
+    # not treat that exact, inactive claim as an unknown operation: bind its
+    # content/metadata first, then remove only the xattrs and verify again.
+    # Active claims still fail closed and are never modified here.
+    verify_file "$operation_claim" 400 "$expected_operation_claim_sha"
+    [[ $(holder_state "$operation_claim") == inactive ]] || return 1
+    clear_and_verify_no_xattrs "$operation_claim" || {
+        print -u2 -- "Could not clear stale operation-claim attributes."
+        exit 79
+    }
+    stale_identity=$(/usr/bin/stat -f '%d:%i' "$operation_claim")
+    verify_file "$operation_claim" 400 "$expected_operation_claim_sha"
+    clear_and_verify_no_xattrs "$operation_claim" || exit 79
+    [[ $(holder_state "$operation_claim") == inactive ]] || return 1
+    current_identity=$(/usr/bin/stat -f '%d:%i' "$operation_claim")
+    [[ "$current_identity" == "$stale_identity" ]] || {
+        print -u2 -- "Operation claim identity changed during stale recovery."
+        exit 79
+    }
+    /bin/unlink "$operation_claim"
+    require_absent "$operation_claim"
+}
+
+repair_orphaned_operation_claim_temp() {
+    local candidates=()
+    local candidate
+    local metadata
+    local candidate_identity
+    local claim_identity
+
+    while IFS= read -r candidate; do
+        [[ -n "$candidate" ]] && candidates+=("$candidate")
+    done < <(operation_claim_temporaries)
+    (( ${#candidates} <= 1 )) || {
+        print -u2 -- "Refusing multiple orphaned operation-claim temporaries."
+        exit 79
+    }
+    (( ${#candidates} == 1 )) || return 0
+    candidate=${candidates[1]}
+
+    if [[ $(holder_state "$candidate") == active ]]; then
+        print -u2 -- "Another operation is publishing its ownership claim."
+        exit 75
+    fi
+    if [[ -e "$operation_claim" || -L "$operation_claim" ]]; then
+        verify_file "$candidate" 400 "$expected_operation_claim_sha" 2
+        verify_file "$operation_claim" 400 "$expected_operation_claim_sha" 2
+        verify_no_xattrs "$candidate"
+        verify_no_xattrs "$operation_claim"
+        candidate_identity=$(/usr/bin/stat -f '%d:%i' "$candidate")
+        claim_identity=$(/usr/bin/stat -f '%d:%i' "$operation_claim")
+        [[ "$candidate_identity" == "$claim_identity" ]] || {
+            print -u2 -- "Operation claim temporary identifies another inode."
+            exit 79
+        }
+        [[ $(holder_state "$operation_claim") == inactive ]] || {
+            print -u2 -- "Another operation owns the published claim."
+            exit 75
+        }
+        /bin/unlink "$candidate"
+        verify_operation_claim
+        return
+    fi
+
+    metadata=$(/usr/bin/stat -f '%u:%g:%OLp:%HT:%Sf:%l' \
+        "$candidate" 2>/dev/null || true)
+    case "$metadata" in
+        0:0:400:'Regular File':-:1|0:0:600:'Regular File':-:1)
+            verify_no_acl "$candidate"
+            verify_no_xattrs "$candidate"
+            /bin/unlink "$candidate"
+            ;;
+        *)
+            print -u2 -- "Refusing unsafe operation-claim temporary: $metadata"
+            exit 79
+            ;;
+    esac
+}
+
+verify_owned_operation_claim() {
+    local current_identity
+    local holders
+    local holder_result
+
+    [[ -n "$owned_claim_identity" && -n "$claim_fd" &&
+       -n "$fixed_claim_fd" ]] || {
+        print -u2 -- "This process does not own the operation claim."
+        exit 79
+    }
+    verify_operation_claim
+    current_identity=$(/usr/bin/stat -f '%d:%i' "$operation_claim")
+    [[ "$current_identity" == "$owned_claim_identity" ]] || {
+        print -u2 -- "Operation claim inode changed while owned."
+        exit 79
+    }
+    set +e
+    holders=$(/usr/sbin/lsof -t "$operation_claim" 2>&1)
+    holder_result=$?
+    set -e
+    if (( holder_result != 0 )) || [[ "$holders" != "$$" ]]; then
+        print -u2 -- "Operation claim is not held exclusively by this process."
+        exit 79
+    fi
+}
+
+release_owned_operation_claim() {
+    local current_identity
+
+    if [[ -n "$owned_claim_identity" ]]; then
+        current_identity=$(/usr/bin/stat -f '%d:%i' "$operation_claim" \
+            2>/dev/null || true)
+        if [[ "$current_identity" == "$owned_claim_identity" ]]; then
+            verify_owned_operation_claim
+            /bin/unlink "$operation_claim"
+        fi
+        owned_claim_identity=''
+    fi
+    if [[ -n "$claim_fd" ]]; then
+        exec {claim_fd}<&-
+        claim_fd=''
+    fi
+    if [[ -n "$fixed_claim_fd" ]]; then
+        exec {fixed_claim_fd}<&-
+        fixed_claim_fd=''
+    fi
+}
+
+acquire_operation_claim() {
+    local purpose=$1
+    local candidate_identity
+
+    repair_orphaned_operation_claim_temp
+    if [[ -e "$operation_claim" || -L "$operation_claim" ]]; then
+        if ! remove_exact_stale_operation_claim; then
+            print -u2 -- "Another live controller operation owns the gate."
+            exit 75
+        fi
+    fi
+
+    operation_claim_temp=$(/usr/bin/mktemp \
+        /private/var/db/.io.github.northstarxyzz.pcvrpatcher.memory-policy.operation.new.XXXXXX)
+    print -rn -- "$operation_claim_contents" > "$operation_claim_temp"
+    /usr/sbin/chown root:wheel "$operation_claim_temp"
+    /bin/chmod 0400 "$operation_claim_temp"
+    /usr/bin/chflags 0 "$operation_claim_temp"
+    /bin/chmod -N "$operation_claim_temp"
+    clear_and_verify_no_xattrs "$operation_claim_temp" || {
+        print -u2 -- "Could not clear operation-claim temporary attributes."
+        exit 79
+    }
+    verify_file "$operation_claim_temp" 400 "$expected_operation_claim_sha"
+    exec {claim_fd}< "$operation_claim_temp"
+    candidate_identity=$(/usr/bin/stat -f '%d:%i' "$operation_claim_temp")
+    if ! /bin/ln "$operation_claim_temp" "$operation_claim"; then
+        print -u2 -- "Another operation won the ownership claim."
+        exit 75
+    fi
+    # macOS may attach provenance metadata when the hard link is published.
+    # Sanitize the published inode, not only the temporary pathname, before
+    # treating it as the live ownership claim.
+    clear_and_verify_no_xattrs "$operation_claim" || {
+        print -u2 -- "Could not clear published operation-claim attributes."
+        exit 79
+    }
+    owned_claim_identity=$candidate_identity
+    exec {fixed_claim_fd}< "$operation_claim"
+    [[ $(/usr/bin/stat -f '%d:%i' "$operation_claim") ==
+       "$owned_claim_identity" ]] || {
+        print -u2 -- "Fixed operation claim does not bind the published inode."
+        exit 79
+    }
+    /bin/unlink "$operation_claim_temp"
+    operation_claim_temp=''
+    verify_owned_operation_claim
+    require_absent "$install_journal"
+    if [[ "$purpose" == launch ]]; then
+        require_absent "$uninstall_journal"
+    elif [[ "$purpose" != uninstall ]]; then
+        print -u2 -- "Unknown operation-claim purpose."
+        exit 64
+    fi
+}
+
+cleanup() {
+    local result=$?
+    trap - EXIT INT TERM HUP
+    release_owned_operation_claim
+    if [[ -n "$journal_temp" &&
+          ( -e "$journal_temp" || -L "$journal_temp" ) ]]; then
+        /bin/unlink "$journal_temp" 2>/dev/null || true
+    fi
+    if [[ -n "$operation_claim_temp" &&
+          ( -e "$operation_claim_temp" || -L "$operation_claim_temp" ) ]]; then
+        /bin/unlink "$operation_claim_temp" 2>/dev/null || true
+    fi
+    exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+runtime_holder_state() {
+    local lsof_output
+    local lsof_result
+
+    if [[ ! -e "$lock_file" && ! -L "$lock_file" ]]; then
+        print -- inactive
+        return
+    fi
+    set +e
+    lsof_output=$(/usr/sbin/lsof -t "$lock_file" 2>&1)
+    lsof_result=$?
+    set -e
+    if (( lsof_result == 0 )) && [[ -n "$lsof_output" ]]; then
+        print -- active
+        return
+    fi
+    if (( lsof_result == 1 )) && [[ -z "$lsof_output" ]]; then
+        print -- inactive
+        return
+    fi
+    print -u2 -- "Could not safely determine whether the controller lock is active."
+    exit 74
+}
+
+verify_runtime_objects() {
+    local socket_metadata
+
+    if [[ -e "$runtime_dir" || -L "$runtime_dir" ]]; then
+        verify_directory "$runtime_dir" '0:0:755:Directory:-'
+    fi
+    if [[ -e "$session_socket" || -L "$session_socket" ]]; then
+        socket_metadata=$(/usr/bin/stat -f '%HT:%OLp' "$session_socket" 2>/dev/null || true)
+        if [[ "$socket_metadata" != 'Socket:600' ]]; then
+            print -u2 -- "Refusing unexpected session socket object: $session_socket"
+            exit 79
+        fi
+        verify_no_acl "$session_socket"
+    fi
+    if [[ -e "$lock_file" || -L "$lock_file" ]]; then
+        verify_file "$lock_file" 600 \
+            e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    fi
+}
+
+clear_runtime_objects() {
+    if [[ -e "$session_socket" || -L "$session_socket" ]]; then
+        verify_owned_uninstall_transition
+        verify_runtime_objects
+        /bin/unlink "$session_socket"
+    fi
+    if [[ -e "$lock_file" || -L "$lock_file" ]]; then
+        verify_owned_uninstall_transition
+        verify_runtime_objects
+        /bin/unlink "$lock_file"
+    fi
+    if [[ -e "$runtime_dir" || -L "$runtime_dir" ]]; then
+        verify_owned_uninstall_transition
+        verify_runtime_objects
+        /bin/rmdir "$runtime_dir"
+    fi
+}
+
+release_new_journal_and_fail_active() {
+    local journal_was_new=$1
+    if (( journal_was_new )); then
+        verify_owned_uninstall_transition
+        /bin/unlink "$uninstall_journal"
+        owned_journal_identity=''
+    fi
+    print -u2 -- "A controller launch or session is active."
+    exit 75
+}
+
+finish_uninstall() {
+    local installed_receipt
+
+    verify_owned_uninstall_transition
+    require_absent "$controller"
+    require_absent "$attestation"
+    installed_receipt=$(receipt_state)
+    [[ "$installed_receipt" == absent ]] || {
+        print -u2 -- "Receipt still exists at final uninstall."
+        exit 79
+    }
+    verify_owned_uninstall_transition
+    verify_package_entries
+    /bin/rmdir "$package_dir"
+    require_absent "$package_dir"
+    verify_owned_uninstall_transition
+    verify_owned_runner
+    /bin/unlink "$uninstall_journal"
+    owned_journal_identity=''
+    require_absent "$uninstall_journal"
+    verify_owned_operation_claim
+    require_absent "$install_journal"
+    verify_owned_runner
+    /bin/unlink "$runner"
+    print -- "Removed the reviewed controller package and receipt."
+}
+
+uninstall_package() {
+    local installed_receipt
+    local controller_present=0
+    local attestation_present=0
+    local journal_was_new=0
+    local final_runner_only=0
+    local runtime_state
+
+    acquire_operation_claim uninstall
+    require_absent "$install_journal"
+    repair_orphaned_journal_temp
+    installed_receipt=$(receipt_state)
+    bind_runner_identity
+
+    if [[ ! -e "$uninstall_journal" && ! -L "$uninstall_journal" ]]; then
+        if [[ ! -e "$package_dir" && ! -L "$package_dir" &&
+              "$installed_receipt" == absent ]]; then
+            # Sole journal-free recovery after journal removal and before the
+            # immediately following runner self-unlink.
+            final_runner_only=1
+        else
+            verify_package_entries
+            verify_file "$controller" 500 "$expected_controller_sha"
+            /usr/bin/codesign --verify --strict "$controller"
+            verify_file "$attestation" 444 "$expected_attestation_sha"
+            [[ "$installed_receipt" == present ]] || {
+                print -u2 -- "The exact installation has no matching package receipt."
+                exit 79
+            }
+        fi
+        create_uninstall_journal
+        journal_was_new=1
+        if [[ -e "$install_journal" || -L "$install_journal" ]]; then
+            # The package installer won the journal race.  We may roll back
+            # only the exact uninstall journal created by this invocation;
+            # no installed object has been changed yet.
+            verify_file "$uninstall_journal" 400 "$expected_journal_sha"
+            verify_owned_operation_claim
+            /bin/unlink "$uninstall_journal"
+            owned_journal_identity=''
+            print -u2 -- "A controller package installation began concurrently."
+            exit 75
+        fi
+    else
+        bind_uninstall_journal
+        require_absent "$install_journal"
+        if [[ ! -e "$package_dir" && ! -L "$package_dir" &&
+              "$installed_receipt" == absent ]]; then
+            # Journaled final subset: package_dir was removed, but the
+            # process stopped before the adjacent journal/runner unlinks.
+            final_runner_only=1
+        else
+            [[ -e "$package_dir" && ! -L "$package_dir" ]] || {
+                print -u2 -- "A journaled uninstall has an unknown package-directory state."
+                exit 79
+            }
+            verify_package_entries
+        fi
+    fi
+
+    verify_owned_uninstall_transition
+    verify_runtime_objects
+    runtime_state=$(runtime_holder_state)
+    if [[ "$runtime_state" == active ]]; then
+        release_new_journal_and_fail_active "$journal_was_new"
+    fi
+    clear_runtime_objects
+
+    if (( final_runner_only )); then
+        verify_owned_uninstall_transition
+        require_absent "$package_dir"
+        [[ $(receipt_state) == absent ]] || exit 79
+        verify_owned_runner
+        /bin/unlink "$uninstall_journal"
+        owned_journal_identity=''
+        require_absent "$uninstall_journal"
+        verify_owned_operation_claim
+        require_absent "$install_journal"
+        verify_owned_runner
+        /bin/unlink "$runner"
+        print -- "Completed runner-last uninstall recovery."
+        return
+    fi
+
+    if [[ -e "$controller" || -L "$controller" ]]; then
+        verify_file "$controller" 500 "$expected_controller_sha"
+        /usr/bin/codesign --verify --strict "$controller"
+        controller_present=1
+    fi
+    if [[ -e "$attestation" || -L "$attestation" ]]; then
+        verify_file "$attestation" 444 "$expected_attestation_sha"
+        attestation_present=1
+    fi
+    installed_receipt=$(receipt_state)
+
+    case "$controller_present:$attestation_present:$installed_receipt" in
+        1:1:present|0:1:present|0:1:absent|0:0:absent)
+            ;;
+        *)
+            print -u2 -- "Refusing an unordered or unknown uninstall subset."
+            exit 79
+            ;;
+    esac
+
+    if (( controller_present )); then
+        verify_owned_uninstall_transition
+        verify_file "$controller" 500 "$expected_controller_sha"
+        /usr/bin/codesign --verify --strict "$controller"
+        /bin/unlink "$controller"
+        require_absent "$controller"
+    fi
+    if [[ "$installed_receipt" == present ]]; then
+        verify_owned_uninstall_transition
+        [[ $(receipt_state) == present ]] || exit 79
+        /usr/sbin/pkgutil --forget "$receipt_id" >/dev/null
+        verify_owned_uninstall_transition
+        [[ $(receipt_state) == absent ]] || {
+            print -u2 -- "Installer receipt was not forgotten."
+            exit 79
+        }
+    fi
+    if (( attestation_present )); then
+        verify_owned_uninstall_transition
+        verify_file "$attestation" 444 "$expected_attestation_sha"
+        /bin/unlink "$attestation"
+        require_absent "$attestation"
+    fi
+    finish_uninstall
+}
+
+launch_controller() {
+    local requested_limit_gib=$1
+    local controller_result
+
+    verify_package_entries
+    verify_file "$controller" 500 "$expected_controller_sha"
+    /usr/bin/codesign --verify --strict "$controller"
+    verify_file "$attestation" 444 "$expected_attestation_sha"
+    [[ $(receipt_state) == present ]] || {
+        print -u2 -- "The reviewed controller package receipt is absent."
+        exit 79
+    }
+    if ! print -rn -- "$requested_limit_gib" | \
+        /usr/bin/grep -Eq '^[1-9][0-9]{0,6}$'; then
+        print -u2 -- "limitGiB must be one canonical ASCII decimal integer."
+        exit 64
+    fi
+    acquire_operation_claim launch
+    set +e
+    "$controller" "$requested_limit_gib"
+    controller_result=$?
+    set -e
+    release_owned_operation_claim
+    return "$controller_result"
+}
+
+if (( EUID != 0 )); then
+    print -u2 -- "The reviewed runner must be launched through system administrator authorization."
+    exit 77
+fi
+
+verify_directory /usr/local '0:0:755:Directory:sunlnk'
+verify_directory /usr/local/bin '0:0:755:Directory:-'
+verify_directory /usr/local/libexec '0:0:755:Directory:-'
+verify_directory /private '0:0:755:Directory:sunlnk,hidden'
+verify_directory /private/var '0:0:755:Directory:sunlnk'
+verify_directory /private/var/db '0:0:755:Directory:sunlnk'
+runner_metadata=$(/usr/bin/stat -f '%u:%g:%OLp:%HT:%Sf:%l' "$runner" 2>/dev/null || true)
+[[ "$runner_metadata" == '0:0:555:Regular File:-:1' ]] || {
+    print -u2 -- "Unsafe installed runner metadata: $runner ($runner_metadata)"
+    exit 79
+}
+verify_no_acl "$runner"
+
+case "${#}:${1:-}" in
+    1:--uninstall)
+        uninstall_package
+        ;;
+    1:*)
+        verify_directory "$package_dir" '0:0:755:Directory:-'
+        launch_controller "$1"
+        ;;
+    *)
+        print -u2 -- "Usage: $runner <limitGiB> | $runner --uninstall"
+        exit 64
+        ;;
+esac

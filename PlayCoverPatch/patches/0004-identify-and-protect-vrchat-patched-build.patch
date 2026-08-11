@@ -1,0 +1,307 @@
+diff --git a/PlayCover.xcodeproj/project.pbxproj b/PlayCover.xcodeproj/project.pbxproj
+--- a/PlayCover.xcodeproj/project.pbxproj
++++ b/PlayCover.xcodeproj/project.pbxproj
+@@ -618,3 +618,3 @@
+ 			shellPath = /bin/sh;
+-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nset -euo pipefail\n\nIDENTITY=${EXPANDED_CODE_SIGN_IDENTITY_NAME};\n# Apple Development: XIN LI (33X85HBRP6)\necho Signing identity $IDENTITY;\n\ncodesign --verbose --force --deep --sign \"$IDENTITY\" ${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PlayTools.framework/PlugIns/AKInterface.bundle;\ncodesign --verbose --force --deep --sign \"$IDENTITY\" ${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PlayTools.framework;\n\n# sign sparkle\n# I still dont know if we need sparkle\nLOCATION=\"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/Sparkle.framework\";\necho Sparkle Signing location $LOCATION;\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION/Versions/B/Autoupdate\";\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION/Versions/B/Updater.app\";\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION/Versions/B/XPCServices/Downloader.xpc\";\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION/Versions/B/XPCServices/Installer.xpc\";\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION\";\n";
++			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nset -euo pipefail\n\nIDENTITY=${EXPANDED_CODE_SIGN_IDENTITY_NAME:--};\nif [ \"$IDENTITY\" = \"Sign to Run Locally\" ]; then\n    IDENTITY=-\nfi\n# Apple Development: XIN LI (33X85HBRP6)\necho Signing identity $IDENTITY;\n\ncodesign --verbose --force --deep --sign \"$IDENTITY\" ${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PlayTools.framework/PlugIns/AKInterface.bundle;\ncodesign --verbose --force --deep --sign \"$IDENTITY\" ${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PlayTools.framework;\n\n# sign sparkle\n# I still dont know if we need sparkle\nLOCATION=\"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/Sparkle.framework\";\necho Sparkle Signing location $LOCATION;\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION/Versions/B/Autoupdate\";\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION/Versions/B/Updater.app\";\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION/Versions/B/XPCServices/Downloader.xpc\";\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION/Versions/B/XPCServices/Installer.xpc\";\ncodesign -f -o runtime -s \"$IDENTITY\" \"$LOCATION\";\n";
+ 		};
+@@ -637,3 +637,3 @@
+ 			shellPath = /bin/sh;
+-			shellScript = "if [[ -z \"$FASTLANE\" ]]; then\n    set -euo pipefail\n    echo \"Bootstraping carthage\"\n\n    if [ -x /usr/local/bin/carthage ]; then\n        carthage=/usr/local/bin/carthage\n    elif [ -x /opt/homebrew/bin/carthage ]; then\n        carthage=/opt/homebrew/bin/carthage\n    elif [ -x /opt/local/bin/carthage ]; then\n        carthage=/opt/local/bin/carthage\n    else\n        echo \"Cannot find carthage\"\n        exit 1\n    fi\n\n    env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin $carthage update --cache-builds --use-xcframeworks\nfi\n";
++			shellScript = "if [[ -z \"$FASTLANE\" ]]; then\n    set -euo pipefail\n    echo \"Bootstraping carthage\"\n\n    if [ -x /usr/local/bin/carthage ]; then\n        carthage=/usr/local/bin/carthage\n    elif [ -x /opt/homebrew/bin/carthage ]; then\n        carthage=/opt/homebrew/bin/carthage\n    elif [ -x /opt/local/bin/carthage ]; then\n        carthage=/opt/local/bin/carthage\n    else\n        echo \"Cannot find carthage\"\n        exit 1\n    fi\n\n    env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin $carthage bootstrap --cache-builds --use-xcframeworks\nfi\n";
+ 		};
+diff --git a/PlayCover/Model/PlayApp.swift b/PlayCover/Model/PlayApp.swift
+--- a/PlayCover/Model/PlayApp.swift
++++ b/PlayCover/Model/PlayApp.swift
+@@ -113,8 +113,39 @@ class PlayApp: BaseApp {
+                     runAppExec()
+                 }
+             }
+         } catch {
+-            Log.shared.error(error)
++            if resolvedLaunchMode == .vrChatCompatible,
++               let policyError = error as? VRChatMemoryPolicyClientError,
++               policyError.shouldOfferControllerStartCommand {
++                await MainActor.run {
++                    presentControllerUnavailableAlert()
++                }
++            } else {
++                Log.shared.error(error)
++            }
+         }
+     }
++
++    @MainActor
++    private func presentControllerUnavailableAlert() {
++        let command = VRChatMemoryPolicyManifest.controllerStartCommand
++        let alert = NSAlert()
++        alert.alertStyle = .warning
++        alert.messageText = NSLocalizedString(
++            "error.vrchatMemoryPolicy.controllerUnavailable.title", comment: ""
++        )
++        alert.informativeText = String(format: NSLocalizedString(
++            "error.vrchatMemoryPolicy.controllerUnavailable.message", comment: ""
++        ), command)
++        alert.addButton(withTitle: NSLocalizedString(
++            "error.vrchatMemoryPolicy.controllerUnavailable.copyCommand", comment: ""
++        ))
++        alert.addButton(withTitle: NSLocalizedString("button.Cancel", comment: ""))
++
++        if alert.runModal() == .alertFirstButtonReturn {
++            let pasteboard = NSPasteboard.general
++            pasteboard.clearContents()
++            pasteboard.setString(command, forType: .string)
++        }
++    }
+ }
+diff --git a/PlayCover/Views/MainView.swift b/PlayCover/Views/MainView.swift
+--- a/PlayCover/Views/MainView.swift
++++ b/PlayCover/Views/MainView.swift
+@@ -127,6 +127,14 @@ struct MainView: View {
+                 }
+                 .background(SplitViewAccessor(sideCollapsed: $collapsed))
+             }
++            .toolbar {
++                ToolbarItem(placement: .principal) {
++                    Label("patch.brand.badge", systemImage: "shield.checkered")
++                        .font(.caption.weight(.semibold))
++                        .foregroundColor(.secondary)
++                        .help("patch.brand.help")
++                }
++            }
+             .onAppear {
+                 self.selectedView = URLObserved.type == .source ? 2 : 1
+             }
+diff --git a/PlayCover/Views/MenuBarView.swift b/PlayCover/Views/MenuBarView.swift
+--- a/PlayCover/Views/MenuBarView.swift
++++ b/PlayCover/Views/MenuBarView.swift
+@@ -22,12 +22,19 @@ struct PlayCoverMenuView: Commands {
+     }
+ }
+ 
+ struct PlayCoverHelpMenuView: Commands {
+-    @ObservedObject var updaterViewModel: UpdaterViewModel
+-
+     var body: some Commands {
+-        CommandGroup(after: .appInfo) {
+-            CheckForUpdatesView(updaterViewModel: updaterViewModel)
++        CommandGroup(replacing: .appInfo) {
++            Button("patch.about.menu") {
++                NSApp.orderFrontStandardAboutPanel(options: [
++                    .applicationName: NSLocalizedString(
++                        "patch.about.applicationName", comment: ""
++                    ),
++                    .credits: NSAttributedString(string: NSLocalizedString(
++                        "patch.about.notice", comment: ""
++                    ))
++                ])
++            }
+         }
+ 
+         CommandGroup(replacing: .help) {
+diff --git a/PlayCover/Views/PlayCoverApp.swift b/PlayCover/Views/PlayCoverApp.swift
+--- a/PlayCover/Views/PlayCoverApp.swift
++++ b/PlayCover/Views/PlayCoverApp.swift
+@@ -16,6 +16,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
+ 
+     func applicationDidFinishLaunching(_ notification: Notification) {
+         UpdateScheme.checkForUpdate()
++        // Defense in depth for preferences left by an upstream build.
++        UserDefaults.standard.set(false, forKey: "SUEnableAutomaticChecks")
+ 
+         UserDefaults.standard.register(
+             defaults: ["NSApplicationCrashOnExceptions": true]
+@@ -73,7 +75,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
+ @main
+ struct PlayCoverApp: App {
+     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+-    @StateObject var updaterViewModel = UpdaterViewModel()
+     var storeVM = StoreVM.shared
+ 
+     @State var isSigningSetupShown = false
+@@ -96,12 +97,12 @@ struct PlayCoverApp: App {
+         .commands {
+             SidebarCommands()
+             PlayCoverMenuView(isSigningSetupShown: $isSigningSetupShown)
+-            PlayCoverHelpMenuView(updaterViewModel: updaterViewModel)
++            PlayCoverHelpMenuView()
+             PlayCoverViewMenuView()
+         }
+ 
+         Settings {
+-            PlayCoverSettingsView(updaterViewModel: updaterViewModel)
++            PlayCoverSettingsView()
+                 .environmentObject(storeVM)
+         }
+     }
+diff --git a/PlayCover/Views/Settings/PlayCoverSettingsView.swift b/PlayCover/Views/Settings/PlayCoverSettingsView.swift
+--- a/PlayCover/Views/Settings/PlayCoverSettingsView.swift
++++ b/PlayCover/Views/Settings/PlayCoverSettingsView.swift
+@@ -5,11 +5,9 @@
+ //  Created by Andrew Glaze on 7/16/22.
+ //
+ 
+-import Sparkle
+ import SwiftUI
+ 
+ struct PlayCoverSettingsView: View {
+-    @ObservedObject var updaterViewModel: UpdaterViewModel
+     @EnvironmentObject var storeVM: StoreVM
+ 
+     private enum Tabs: Hashable {
+@@ -18,7 +16,7 @@ struct PlayCoverSettingsView: View {
+ 
+     var body: some View {
+         TabView {
+-            UpdateSettings(updaterViewModel: updaterViewModel)
++            UpdateSettings()
+                 .tabItem {
+                     Label("preferences.tab.updates", systemImage: "square.and.arrow.down")
+                 }
+diff --git a/PlayCover/Views/Settings/UpdateSettings.swift b/PlayCover/Views/Settings/UpdateSettings.swift
+--- a/PlayCover/Views/Settings/UpdateSettings.swift
++++ b/PlayCover/Views/Settings/UpdateSettings.swift
+@@ -5,24 +5,18 @@
+ //  Created by Andrew Glaze on 7/23/22.
+ //
+ 
+-import Sparkle
+ import SwiftUI
+ 
+ struct UpdateSettings: View {
+-    @ObservedObject var updaterViewModel: UpdaterViewModel
+-    @AppStorage("SUEnableAutomaticChecks") var autoUpdate = false
+-
+     var body: some View {
+         Form {
+-            Toggle("preferences.toggle.automaticUpdates", isOn: $autoUpdate)
+-            Button("preferences.button.checkForUpdates") {
+-                updaterViewModel.checkForUpdates()
++            Label("patch.updates.disabled.title", systemImage: "lock.shield")
++                .font(.headline)
++            Text("patch.updates.disabled.detail")
++                .foregroundColor(.secondary)
++                .fixedSize(horizontal: false, vertical: true)
+-            }
+         }
+         .padding(20)
+-        .frame(width: 600, height: 100, alignment: .center)
+-        .onChange(of: autoUpdate) { value in
+-            updaterViewModel.automaticallyCheckForUpdates = value
+-        }
++        .frame(width: 600, height: 120, alignment: .center)
+     }
+ }
+diff --git a/PlayCover/Views/Sparkle.swift b/PlayCover/Views/Sparkle.swift
+--- a/PlayCover/Views/Sparkle.swift
++++ b/PlayCover/Views/Sparkle.swift
+@@ -6,54 +6,17 @@
+ //  Copied from https://sparkle-project.org/documentation/programmatic-setup/
+ //
+ 
+-import Sparkle
+ import SwiftUI
+ 
+-// This view model class manages Sparkle's updater and publishes when new updates are allowed to be checked
++// Compatibility names remain so downstream source references cannot revive an
++// updater accidentally. This patched build never creates or starts Sparkle.
+ final class UpdaterViewModel: ObservableObject {
+-    private let updaterController: SPUStandardUpdaterController
+-
+-    @Published var canCheckForUpdates = false
+-
+-    var automaticallyCheckForUpdates: Bool {
+-        get {
+-            updaterController.updater.automaticallyChecksForUpdates
+-        }
+-        set(newValue) {
+-            updaterController.updater.automaticallyChecksForUpdates = newValue
+-        }
+-    }
+-
+-    init() {
+-        // If you want to start the updater manually, pass false to startingUpdater and call .startUpdater() later
+-        // This is where you can also pass an updater delegate if you need one
+-        updaterController = SPUStandardUpdaterController(
+-            startingUpdater: true,
+-            updaterDelegate: nil,
+-            userDriverDelegate: nil)
+-
+-        updaterController.updater.publisher(for: \.canCheckForUpdates)
+-            .assign(to: &$canCheckForUpdates)
+-
+-        if automaticallyCheckForUpdates {
+-            updaterController.updater.checkForUpdatesInBackground()
+-        }
+-    }
+-
+-    func checkForUpdates() {
+-        updaterController.checkForUpdates(nil)
+-    }
++    static let officialUpdatesDisabled = true
+ }
+ 
+-// This additional view is needed for the disabled state on the menu item to work properly before Monterey.
+-// See https://stackoverflow.com/questions/68553092/menu-not-updating-swiftui-bug for more information
++// Kept as an inert compatibility view; it contains no update action.
+ struct CheckForUpdatesView: View {
+-    @ObservedObject var updaterViewModel: UpdaterViewModel
+-
+     var body: some View {
+-        Button(NSLocalizedString("menubar.checkForUpdates", comment: ""),
+-               systemImage: "arrow.trianglehead.2.clockwise.rotate.90",
+-               action: updaterViewModel.checkForUpdates)
+-            .disabled(!updaterViewModel.canCheckForUpdates)
++        Label("patch.updates.disabled.title", systemImage: "lock.shield")
+     }
+ }
+diff --git a/PlayCover/Info.plist b/PlayCover/Info.plist
+--- a/PlayCover/Info.plist
++++ b/PlayCover/Info.plist
+@@ -80,10 +80,6 @@
+ 	<string>Copyright © PlayCover Community Edition</string>
+ 	<key>NSSystemAdministrationUsageDescription</key>
+ 	<string>PlayCover needs to read files to save apps</string>
+-	<key>SUFeedURL</key>
+-	<string>https://raw.githubusercontent.com/PlayCover/PlayCover/update/appcast.xml</string>
+-	<key>SUPublicEDKey</key>
+-	<string>YzgQIwegeMGJxhosWRn/1IyEeEe385xcKE3cXeewlK0=</string>
+ 	<key>UTExportedTypeDeclarations</key>
+ 	<array>
+ 		<dict>
+diff --git a/PlayCover/en.lproj/Localizable.strings b/PlayCover/en.lproj/Localizable.strings
+--- a/PlayCover/en.lproj/Localizable.strings
++++ b/PlayCover/en.lproj/Localizable.strings
+@@ -346,4 +346,14 @@
+ "error.vrchatMemoryPolicy.protocol" = "The VRChat controller protocol failed (%@).";
+ "error.vrchatMemoryPolicy.cancel" = "Could not cancel the controller's pre-bind wait: %@";
+ "error.vrchatMemoryPolicy.lateCancel" = "The controller already bound the target; PlayCover will not send a late cancellation.";
++"patch.brand.badge" = "VRChat Patch";
++"patch.brand.help" = "This PlayCover build includes the reviewed VRChat memory compatibility patch.";
++"patch.about.menu" = "About PlayCover VRChat Patch";
++"patch.about.applicationName" = "PlayCover — VRChat Patch";
++"patch.about.notice" = "Patched build for VRChat memory compatibility. Official PlayCover updates are disabled to preserve this patch.";
++"patch.updates.disabled.title" = "Official updates are disabled";
++"patch.updates.disabled.detail" = "This VRChat Patch build does not use Sparkle because an official update would overwrite the reviewed patch.";
++"error.vrchatMemoryPolicy.controllerUnavailable.title" = "VRChat controller is not running";
++"error.vrchatMemoryPolicy.controllerUnavailable.message" = "Start it in Terminal, then retry compatibility launch:\n%@";
++"error.vrchatMemoryPolicy.controllerUnavailable.copyCommand" = "Copy Command";
+ 
+diff --git a/PlayCover/zh-Hans.lproj/Localizable.strings b/PlayCover/zh-Hans.lproj/Localizable.strings
+--- a/PlayCover/zh-Hans.lproj/Localizable.strings
++++ b/PlayCover/zh-Hans.lproj/Localizable.strings
+@@ -396,3 +396,13 @@
+ "error.vrchatMemoryPolicy.protocol" = "VRChat controller 协议失败（%@）。";
+ "error.vrchatMemoryPolicy.cancel" = "无法取消 controller 的绑定前等待：%@";
+ "error.vrchatMemoryPolicy.lateCancel" = "controller 已绑定目标；PlayCover 不会发送过期取消。";
++"patch.brand.badge" = "VRChat Patch";
++"patch.brand.help" = "此 PlayCover 构建包含已审阅的 VRChat 内存兼容补丁。";
++"patch.about.menu" = "关于 PlayCover VRChat Patch";
++"patch.about.applicationName" = "PlayCover — VRChat Patch";
++"patch.about.notice" = "用于 VRChat 内存兼容的补丁构建。为避免覆盖补丁，官方 PlayCover 更新已禁用。";
++"patch.updates.disabled.title" = "官方更新已禁用";
++"patch.updates.disabled.detail" = "此 VRChat Patch 构建不使用 Sparkle，因为官方更新会覆盖已审阅的补丁。";
++"error.vrchatMemoryPolicy.controllerUnavailable.title" = "VRChat controller 未运行";
++"error.vrchatMemoryPolicy.controllerUnavailable.message" = "请在终端中启动它，然后重试兼容启动：\n%@";
++"error.vrchatMemoryPolicy.controllerUnavailable.copyCommand" = "复制命令";

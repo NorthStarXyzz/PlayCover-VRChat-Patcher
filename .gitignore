@@ -1,0 +1,33 @@
+.DS_Store
+.build/
+DerivedData/
+Artifacts/
+Build/
+*.xcarchive
+*.dmg
+*.pkg
+*.ipa
+*.app
+*.zip
+*.tmp
+
+# Never commit local signing material or VRChat binaries.
+*.p12
+*.mobileprovision
+*.provisionprofile
+Compatibility/local/
+
+# Logo references and historical iterations never ship. Keep only the reviewed
+# v10 masters used by the current build.
+Design/Logo/reference-*.png
+Design/Logo/*-chroma.png
+Design/Logo/*-app-icon-v1.png
+Design/Logo/*-app-icon-v2.png
+Design/Logo/*-app-icon-v3.png
+Design/Logo/*-app-icon-v4.png
+Design/Logo/*-app-icon-v5.png
+Design/Logo/*-app-icon-v6.png
+Design/Logo/*-app-icon-v7.png
+Design/Logo/*-app-icon-v8.png
+Design/Logo/*-app-icon-v9.png
+Design/Logo/*-concept-v*.png

@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NorthStarXyzz/PlayCover-VRChat-Patcher/raw/main/Compatibility/schema.json",
+  "title": "PlayCover VRChat Patcher compatibility manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "dependentRequired": {
+    "patchedPlayCover": ["controllerPackage"],
+    "controllerPackage": ["patchedPlayCover"]
+  },
+  "required": [
+    "schemaVersion",
+    "patchID",
+    "supportState",
+    "architecture",
+    "playCover",
+    "layout",
+    "vrChat",
+    "host",
+    "policy",
+    "ipc"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "patchID": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]+$" },
+    "supportState": { "enum": ["experimental", "supported", "revoked"] },
+    "architecture": { "const": "arm64" },
+    "playCover": { "$ref": "#/$defs/originalPlayCoverIdentity" },
+    "patchedPlayCover": { "$ref": "#/$defs/patchedPlayCoverIdentity" },
+    "controllerPackage": { "$ref": "#/$defs/controllerPackage" },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "originalAppPath",
+        "patchedAppPath",
+        "originalLibraryRelativePath",
+        "patchedLibraryRelativePath",
+        "sharedVRChatContainerRelativePath"
+      ],
+      "properties": {
+        "originalAppPath": { "const": "/Applications/PlayCover.app" },
+        "patchedAppPath": { "const": "/Applications/PlayCover VRChat.app" },
+        "originalLibraryRelativePath": { "const": "Library/Containers/io.playcover.PlayCover" },
+        "patchedLibraryRelativePath": { "const": "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat" },
+        "sharedVRChatContainerRelativePath": { "const": "Library/Containers/com.vrchat.mobile" }
+      }
+    },
+    "vrChat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleIdentifier",
+        "shortVersion",
+        "buildVersion",
+        "sourceAppRelativePath",
+        "destinationAppRelativePath",
+        "executableName",
+        "mainIdentity",
+        "machoAllowlist",
+        "unityFramework",
+        "appdomeLibloader"
+      ],
+      "properties": {
+        "bundleIdentifier": { "const": "com.vrchat.mobile" },
+        "shortVersion": { "const": "2026.2.30300" },
+        "buildVersion": { "const": "1365" },
+        "sourceAppRelativePath": {
+          "const": "Library/Containers/io.playcover.PlayCover/Applications/com.vrchat.mobile.app"
+        },
+        "destinationAppRelativePath": {
+          "const": "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat/Applications/com.vrchat.mobile.app"
+        },
+        "executableName": { "const": "VRChat" },
+        "mainIdentity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "executableUUID",
+            "normalizedUnsignedSHA256",
+            "normalizedLoadCommandsSHA256",
+            "normalizedEntitlementsSHA256"
+          ],
+          "properties": {
+            "executableUUID": { "$ref": "#/$defs/uuid" },
+            "normalizedUnsignedSHA256": { "$ref": "#/$defs/sha256" },
+            "normalizedLoadCommandsSHA256": { "$ref": "#/$defs/sha256" },
+            "normalizedEntitlementsSHA256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "machoAllowlist": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["format", "digestSHA256", "count"],
+          "properties": {
+            "format": { "const": "PCVR-MACHO-ALLOWLIST/1" },
+            "digestSHA256": {
+              "const": "60df094badbe3fb9e8f051f07d2a38a54cfb7bd592c3cf62a69e355050ec5109"
+            },
+            "count": { "const": 46 }
+          }
+        },
+        "unityFramework": { "$ref": "#/$defs/nestedExecutableIdentity" },
+        "appdomeLibloader": { "$ref": "#/$defs/nestedExecutableIdentity" }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["productVersion", "buildVersion", "xnuVersion"],
+      "properties": {
+        "productVersion": { "const": "26.6" },
+        "buildVersion": { "const": "25G70" },
+        "xnuVersion": { "const": "xnu-12377.161.13~4" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "defaultMode",
+        "minimumGiB",
+        "maximumPhysicalMemoryPercent",
+        "stepGiB",
+        "waitSeconds",
+        "fatal"
+      ],
+      "properties": {
+        "defaultMode": { "const": "automatic75Percent" },
+        "minimumGiB": { "const": 4 },
+        "maximumPhysicalMemoryPercent": { "const": 75 },
+        "stepGiB": { "const": 1 },
+        "waitSeconds": { "const": 300 },
+        "fatal": { "const": false }
+      }
+    },
+    "ipc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "socketPath"],
+      "properties": {
+        "protocolVersion": { "const": 2 },
+        "socketPath": {
+          "const": "/private/var/run/io.github.northstarxyzz.pcvrpatcher/session.sock"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$"
+    },
+    "originalPlayCoverIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit",
+        "bundleIdentifier",
+        "shortVersion",
+        "buildVersion",
+        "executableName",
+        "executableSHA256",
+        "executableUUID",
+        "treeSHA256",
+        "infoPlistSHA256",
+        "codeResourcesSHA256"
+      ],
+      "properties": {
+        "repository": { "const": "https://github.com/PlayCover/PlayCover.git" },
+        "commit": { "const": "55638e98f36eac1f3d09803799480e9d83f663f8" },
+        "bundleIdentifier": { "const": "io.playcover.PlayCover" },
+        "shortVersion": { "const": "3.1.0" },
+        "buildVersion": { "const": "856" },
+        "executableName": { "const": "PlayCover" },
+        "executableSHA256": { "$ref": "#/$defs/sha256" },
+        "executableUUID": { "$ref": "#/$defs/uuid" },
+        "treeSHA256": { "$ref": "#/$defs/sha256" },
+        "infoPlistSHA256": { "$ref": "#/$defs/sha256" },
+        "codeResourcesSHA256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "patchedPlayCoverIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundleIdentifier",
+        "shortVersion",
+        "buildVersion",
+        "executableName",
+        "executableSHA256",
+        "executableUUID",
+        "treeSHA256",
+        "infoPlistSHA256",
+        "codeResourcesSHA256"
+      ],
+      "properties": {
+        "bundleIdentifier": { "const": "io.github.northstarxyzz.PlayCoverVRChat" },
+        "shortVersion": { "const": "3.1.0" },
+        "buildVersion": { "const": "856" },
+        "executableName": { "const": "PlayCover VRChat" },
+        "executableSHA256": { "$ref": "#/$defs/sha256" },
+        "executableUUID": { "$ref": "#/$defs/uuid" },
+        "treeSHA256": { "$ref": "#/$defs/sha256" },
+        "infoPlistSHA256": { "$ref": "#/$defs/sha256" },
+        "codeResourcesSHA256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "controllerPackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relativePath",
+        "identifier",
+        "version",
+        "sha256",
+        "controllerBuildID",
+        "controllerQuarantinePath",
+        "runnerQuarantinePath",
+        "runner",
+        "controller",
+        "attestation",
+        "uninstallJournal",
+        "installJournal",
+        "operationClaim",
+        "timeoutSeconds",
+        "pollMilliseconds"
+      ],
+      "properties": {
+        "relativePath": { "const": "Controller/PlayCoverVRChatMemoryPolicy.pkg" },
+        "identifier": { "const": "io.github.northstarxyzz.pcvrpatcher.memory-policy" },
+        "version": { "const": "0.1.0" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "controllerBuildID": { "const": "25G70-vrchat-2026.2.30300-1365-r6" },
+        "controllerQuarantinePath": {
+          "const": "/usr/local/libexec/playcover-vrchat-memory-policy/.controller.pcvr-install"
+        },
+        "runnerQuarantinePath": {
+          "const": "/usr/local/bin/.playcover-vrchat-memory-policy.pcvr-install"
+        },
+        "runner": { "$ref": "#/$defs/installedArtifact" },
+        "controller": { "$ref": "#/$defs/installedArtifact" },
+        "attestation": { "$ref": "#/$defs/installedArtifact" },
+        "uninstallJournal": { "$ref": "#/$defs/installedArtifact" },
+        "installJournal": { "$ref": "#/$defs/installedArtifact" },
+        "operationClaim": { "$ref": "#/$defs/installedArtifact" },
+        "timeoutSeconds": { "const": 900 },
+        "pollMilliseconds": { "const": 500 }
+      }
+    },
+    "installedArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "uid", "gid", "mode", "linkCount"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^/[^\\u0000]+$" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "uid": { "const": 0 },
+        "gid": { "const": 0 },
+        "mode": { "type": "string", "pattern": "^0[0-7]{3}$" },
+        "linkCount": { "const": 1 }
+      }
+    },
+    "nestedExecutableIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relativePath", "executableSHA256", "executableUUID"],
+      "properties": {
+        "relativePath": { "type": "string", "minLength": 1 },
+        "executableSHA256": { "$ref": "#/$defs/sha256" },
+        "executableUUID": { "$ref": "#/$defs/uuid" }
+      }
+    }
+  }
+}

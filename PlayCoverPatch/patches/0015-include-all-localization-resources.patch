@@ -1,0 +1,32 @@
+--- a/PlayCover.xcodeproj/project.pbxproj
++++ b/PlayCover.xcodeproj/project.pbxproj
+@@ -107,6 +107,9 @@
+ 		3665EF8828832400007CF915 /* PlayCoverSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayCoverSettingsView.swift; sourceTree = "<group>"; usesTabs = 0; };
+ 		36B26B96288C724600859EFD /* UpdateSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSettings.swift; sourceTree = "<group>"; };
+ 		5314D1ED26C402EC00A0A727 /* Shell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shell.swift; sourceTree = "<group>"; };
++		F0A100000000000000000001 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/Localizable.strings; sourceTree = "<group>"; };
++		F0A100000000000000000002 /* ca */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ca; path = ca.lproj/Localizable.strings; sourceTree = "<group>"; };
++		F0A100000000000000000003 /* uk */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = uk; path = uk.lproj/Localizable.strings; sourceTree = "<group>"; };
+ 		531D717926E8313100F4A7AB /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/Localizable.strings; sourceTree = "<group>"; };
+ 		532644E126E79E5C002EA34D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+ 		532644E226E7D9C4002EA34D /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+@@ -501,6 +504,9 @@
+ 			hasScannedForEncodings = 0;
+ 			knownRegions = (
+ 				en,
++				ar,
++				ca,
++				uk,
+ 				Base,
+ 				de,
+ 				"zh-Hans",
+@@ -725,6 +731,9 @@
+ 			isa = PBXVariantGroup;
+ 			children = (
+ 				532644E126E79E5C002EA34D /* en */,
++				F0A100000000000000000001 /* ar */,
++				F0A100000000000000000002 /* ca */,
++				F0A100000000000000000003 /* uk */,
+ 				532644E226E7D9C4002EA34D /* de */,
+ 				532644E326E80DD0002EA34D /* zh-Hans */,
+ 				532644E426E80E1A002EA34D /* ru */,

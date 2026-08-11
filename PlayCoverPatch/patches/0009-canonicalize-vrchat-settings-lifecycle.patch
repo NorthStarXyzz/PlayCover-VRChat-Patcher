@@ -1,0 +1,57 @@
+diff --git a/PlayCover/Model/AppSettings.swift b/PlayCover/Model/AppSettings.swift
+--- a/PlayCover/Model/AppSettings.swift
++++ b/PlayCover/Model/AppSettings.swift
+@@ -25,7 +25,7 @@ struct AppSettingsData: Codable {
+     var bypass = false
+     var discordActivity = DiscordActivity()
+     var version = "3.0.0"
+-    var playChain = true
++    var playChain = false
+     var playChainDebugging = false
+     var inverseScreenValues = false
+     var metalHUD = false {
+@@ -74,7 +74,7 @@ struct AppSettingsData: Codable {
+         discordActivity = try container.decodeIfPresent(DiscordActivity.self,
+                                                         forKey: .discordActivity) ?? DiscordActivity()
+         version = try container.decodeIfPresent(String.self, forKey: .version) ?? "3.0.0"
+-        playChain = try container.decodeIfPresent(Bool.self, forKey: .playChain) ?? true
++        playChain = try container.decodeIfPresent(Bool.self, forKey: .playChain) ?? false
+         playChainDebugging = try container.decodeIfPresent(Bool.self, forKey: .playChainDebugging) ?? false
+         inverseScreenValues = try container.decodeIfPresent(Bool.self, forKey: .inverseScreenValues) ?? false
+         metalHUD = try container.decodeIfPresent(Bool.self, forKey: .metalHUD) ?? false
+@@ -135,6 +135,12 @@ class AppSettings {
+         }
+ 
+         settings.bundleIdentifier = info.bundleIdentifier
++        if VRChatMemoryPolicyManifest.matches(
++            bundleIdentifier: info.bundleIdentifier
++        ) {
++            settings.playChain = false
++            settings.playChainDebugging = false
++        }
+     }
+ 
+     public func sync() {
+diff --git a/PlayCover/Model/PlayApp.swift b/PlayCover/Model/PlayApp.swift
+--- a/PlayCover/Model/PlayApp.swift
++++ b/PlayCover/Model/PlayApp.swift
+@@ -356,6 +356,9 @@ extension PlayApp {
+ // MARK: - KeyCover
+ extension PlayApp {
+     func unlockKeyCover() async {
++        guard !VRChatMemoryPolicyManifest.matches(
++            bundleIdentifier: info.bundleIdentifier
++        ) else { return }
+         if KeyCover.shared.isKeyCoverEnabled() {
+             let keychain = KeyCover.shared.listKeychains()
+                 .first(where: { $0.appBundleID == self.info.bundleIdentifier })
+@@ -382,6 +385,9 @@ extension PlayApp {
+     }
+ 
+     func lockKeyCover() {
++        guard !VRChatMemoryPolicyManifest.matches(
++            bundleIdentifier: info.bundleIdentifier
++        ) else { return }
+         if KeyCover.shared.isKeyCoverEnabled() {
+             if sessionDisableKeychain {
+                 settings.settings.playChain = true

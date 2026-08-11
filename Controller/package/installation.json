@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "packageIdentifier": "io.github.northstarxyzz.pcvrpatcher.memory-policy",
+  "packageVersion": "0.1.0",
+  "controllerBuildID": "25G70-vrchat-2026.2.30300-1365-r6",
+  "controllerPath": "/usr/local/libexec/playcover-vrchat-memory-policy/controller",
+  "controllerSHA256": "824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c",
+  "runnerPath": "/usr/local/bin/playcover-vrchat-memory-policy"
+}

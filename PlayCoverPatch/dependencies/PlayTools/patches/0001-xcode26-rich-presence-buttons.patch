@@ -1,0 +1,18 @@
+diff --git a/PlayTools/DiscordActivity/DiscordIPC.swift b/PlayTools/DiscordActivity/DiscordIPC.swift
+index 1f655703102fe1b6a22ecb94250c84129f5daa02..024fcbd6d6f1f3e31d7df233f9f153a9070b17cd 100644
+--- a/PlayTools/DiscordActivity/DiscordIPC.swift
++++ b/PlayTools/DiscordActivity/DiscordIPC.swift
+@@ -68,9 +68,10 @@ class DiscordIPC {
+ 
+         activity.timestamps.start = Date()
+ 
+-        activity.buttons[0].label = "Download PlayCover"
+-        activity.buttons[0].url = "https://github.com/PlayCover/PlayCover/releases"
+-        activity.buttons.removeLast()
++        activity.buttons = [
++            RichPresence.Button(label: "Download PlayCover",
++                                url: "https://github.com/PlayCover/PlayCover/releases")
++        ]
+ 
+         return activity
+     }

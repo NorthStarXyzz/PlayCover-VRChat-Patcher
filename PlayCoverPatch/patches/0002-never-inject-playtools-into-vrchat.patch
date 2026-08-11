@@ -1,0 +1,56 @@
+diff --git a/PlayCover/AppInstaller/Installer.swift b/PlayCover/AppInstaller/Installer.swift
+--- a/PlayCover/AppInstaller/Installer.swift
++++ b/PlayCover/AppInstaller/Installer.swift
+@@ -46,17 +46,10 @@ class Installer {
+ 
+     // swiftlint:disable:next function_body_length
+     static func install(ipaUrl: URL, export: Bool, returnCompletion: @escaping (URL?) -> Void) {
+-        // If (the option key is held or the install playtools popup settings is true) and its not an export,
+-        //    then show the installer dialog
+-        let installPlayTools: Bool
+         let applicationType = InstallPreferences.shared.defaultAppType
+-
+-        if (ModifierKeyObserver.shared.isOptionKeyPressed
+-                || InstallPreferences.shared.showInstallPopup) && !export {
+-            installPlayTools = installPlayToolsPopup()
+-        } else {
+-            installPlayTools = InstallPreferences.shared.alwaysInstallPlayTools
+-        }
++        let shouldShowPlayToolsPopup = (ModifierKeyObserver.shared.isOptionKeyPressed
++            || InstallPreferences.shared.showInstallPopup) && !export
++        let defaultInstallPlayTools = InstallPreferences.shared.alwaysInstallPlayTools
+ 
+         InstallVM.shared.next(.begin, 0.0, 0.0)
+ 
+@@ -68,6 +61,19 @@ class Installer {
+                 try ipa.allocateTempDir()
+ 
+                 let app = try ipa.unzip()
++                let supportsPlayTools = !VRChatMemoryPolicyManifest.matches(
++                    bundleIdentifier: app.info.bundleIdentifier
++                )
++                let installPlayTools: Bool
++                if !supportsPlayTools {
++                    installPlayTools = false
++                } else if shouldShowPlayToolsPopup {
++                    installPlayTools = await MainActor.run {
++                        installPlayToolsPopup()
++                    }
++                } else {
++                    installPlayTools = defaultInstallPlayTools
++                }
+                 if await ipa.checkOfficialMacOS(app: IPA.Application.base(app)) {
+                     ipa.releaseTempDir()
+                     InstallVM.shared.next(.failed, 0.95, 1.0)
+@@ -92,9 +99,9 @@ class Installer {
+                     }
+                 }
+ 
+-                if export {
++                if export && supportsPlayTools {
+                     try PlayTools.injectInIPA(app.executable, payload: app.url)
+-                } else if installPlayTools {
++                } else if !export && installPlayTools {
+                     try await PlayTools.installInIPA(app.executable)
+                 }
+ 

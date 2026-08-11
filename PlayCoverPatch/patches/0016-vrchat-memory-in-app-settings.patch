@@ -1,0 +1,43 @@
+--- a/PlayCover/Views/AppSettingsView.swift
++++ b/PlayCover/Views/AppSettingsView.swift
+@@ -76,6 +76,17 @@
+             }
+ 
+             TabView {
++                if VRChatMemoryPolicyManifest.matches(
++                    bundleIdentifier: viewModel.app.info.bundleIdentifier
++                ) {
++                    VRChatMemoryPolicySettingsView()
++                        .tabItem {
++                            Label(
++                                "preferences.tab.vrchatMemoryPolicy",
++                                systemImage: "memorychip"
++                            )
++                        }
++                }
+                 KeymappingView(settings: $viewModel.settings)
+                     .tabItem {
+                         Text("settings.tab.km")
+--- a/PlayCover/Views/Settings/PlayCoverSettingsView.swift
++++ b/PlayCover/Views/Settings/PlayCoverSettingsView.swift
+@@ -11,19 +11,11 @@
+     @EnvironmentObject var storeVM: StoreVM
+ 
+     private enum Tabs: Hashable {
+-        case vrChatMemory, updates, ipasource, keyCover, install, uninstall
++        case updates, ipasource, keyCover, install, uninstall
+     }
+ 
+     var body: some View {
+         TabView {
+-            VRChatMemoryPolicySettingsView()
+-                .tabItem {
+-                    Label(
+-                        "preferences.tab.vrchatMemoryPolicy",
+-                        systemImage: "memorychip"
+-                    )
+-                }
+-                .tag(Tabs.vrChatMemory)
+             UpdateSettings()
+                 .tabItem {
+                     Label("preferences.tab.updates", systemImage: "square.and.arrow.down")

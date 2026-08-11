@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "codex/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify source and tests
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Verify repository policy and compatibility manifest
+        run: Scripts/verify-repository.sh
+
+      - name: Run Swift transaction and manifest tests
+        run: swift test
+
+      - name: Run controller protocol tests with sanitizers
+        run: Tests/Controller/run-tests.sh
+
+      - name: Build reviewed controller twice
+        run: |
+          Controller/build.sh
+          first=$(shasum -a 256 Controller/build/vrchat-memory-policy-controller | awk '{print $1}')
+          Controller/build.sh
+          second=$(shasum -a 256 Controller/build/vrchat-memory-policy-controller | awk '{print $1}')
+          test "$first" = "$second"
+
+      - name: Build source-only SwiftUI inspection app
+        run: >-
+          Scripts/build-patcher-app.sh
+          --output "$RUNNER_TEMP/PlayCover VRChat Patcher.app"
+
+      - name: Verify source-only SwiftUI inspection app
+        run: >-
+          Scripts/verify-patcher-app.sh
+          "$RUNNER_TEMP/PlayCover VRChat Patcher.app"
+
+      - name: Package development artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: >-
+          ditto -c -k --keepParent
+          "$RUNNER_TEMP/PlayCover VRChat Patcher.app"
+          "$RUNNER_TEMP/PlayCover-VRChat-Patcher-source-only.zip"
+
+      - name: Upload source-only development artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: PlayCover-VRChat-Patcher-source-only
+          path: ${{ runner.temp }}/PlayCover-VRChat-Patcher-source-only.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  patch-series:
+    name: Verify pinned PlayCover patch series
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Fetch pinned upstream commit
+        run: Scripts/fetch-playcover.sh
+
+      - name: Apply patch series cleanly
+        run: Scripts/apply-playcover-patches.sh
+
+      - name: Run PlayCover coordinator tests and applied invariants
+        run: |
+          PlayCoverPatch/run-tests.sh
+          PlayCoverPatch/check.sh --applied Build/PlayCover
+
+      - name: Install pinned-build tooling
+        run: |
+          if ! command -v carthage >/dev/null 2>&1; then
+            brew install carthage
+          fi
+          carthage version
+
+      - name: Build and verify complete patched PlayCover payload
+        run: >-
+          Scripts/build-playcover-payload.sh
+          "$GITHUB_WORKSPACE/Build/PlayCover"
+          "$RUNNER_TEMP/PlayCover.app"
+
+      - name: Reject forbidden VRChat injection artifacts
+        run: |
+          ! rg -n 'PlayCoverCompatEmpty|PlayCoverMemoryShim|VRChatMemoryPatch|libloader replacement' Build/PlayCover
+          ! find Build/PlayCover -type f \( -name '*.ipa' -o -name '*MemoryShim*.dylib' -o -name '*CompatEmpty*.dylib' \) -print -quit | grep .

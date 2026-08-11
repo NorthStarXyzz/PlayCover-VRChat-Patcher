@@ -1,0 +1,28 @@
+diff --git a/PlayCover/Views/MainView.swift b/PlayCover/Views/MainView.swift
+--- a/PlayCover/Views/MainView.swift
++++ b/PlayCover/Views/MainView.swift
+@@ -127,14 +127,6 @@ struct MainView: View {
+                 }
+                 .background(SplitViewAccessor(sideCollapsed: $collapsed))
+             }
+-            .toolbar {
+-                ToolbarItem(placement: .principal) {
+-                    Label("patch.brand.badge", systemImage: "shield.checkered")
+-                        .font(.caption.weight(.semibold))
+-                        .foregroundColor(.secondary)
+-                        .help("patch.brand.help")
+-                }
+-            }
+             .onAppear {
+                 self.selectedView = URLObserved.type == .source ? 2 : 1
+             }
+diff --git a/PlayCover/zh-Hans.lproj/Localizable.strings b/PlayCover/zh-Hans.lproj/Localizable.strings
+--- a/PlayCover/zh-Hans.lproj/Localizable.strings
++++ b/PlayCover/zh-Hans.lproj/Localizable.strings
+@@ -394,5 +394,6 @@
+ "error.vrchatMemoryPolicy.protocol" = "VRChat controller 协议失败（%@）。";
+ "error.vrchatMemoryPolicy.cancel" = "无法取消 controller 的绑定前等待：%@";
+ "error.vrchatMemoryPolicy.lateCancel" = "controller 已绑定目标；PlayCover 不会发送过期取消。";
++"playapp.keymap" = "按键映射";
+ "patch.brand.badge" = "PlayCover VRChat";
+ "patch.brand.help" = "这是使用独立身份和资料库的 PlayCover VRChat 内存兼容构建。";

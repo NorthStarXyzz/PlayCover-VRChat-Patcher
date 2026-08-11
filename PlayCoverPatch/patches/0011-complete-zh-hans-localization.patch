@@ -1,0 +1,52 @@
+diff --git a/PlayCover/zh-Hans.lproj/Localizable.strings b/PlayCover/zh-Hans.lproj/Localizable.strings
+--- a/PlayCover/zh-Hans.lproj/Localizable.strings
++++ b/PlayCover/zh-Hans.lproj/Localizable.strings
+@@ -441,3 +441,48 @@
+ "error.vrchatReadOnly.reason.info_plist_unsigned" = "Info.plist 未被签名封装";
+ "error.vrchatReadOnly.reason.signature_invalid" = "代码签名无效";
+ "error.vrchatReadOnly.reason.architecture_invalid" = "可执行文件的平台或架构不兼容";
++"alert.appstore" = "macOS 版本可用";
++"alert.corrupted" = "文件可能已损坏。请重新下载。";
++"alert.errorKmCreated" = "创建按键映射时出错！";
++"alert.errorRenameKm" = "重命名按键映射时出错！";
++"alert.notSpace" = "磁盘空间不足";
++"alert.quota.limit" = "已达到配额限制。可能需要 24 小时才能再次下载此文件";
++"alert.start.anyway" = "仍然启动";
++"alert.version.text" = "%@ 有新版本可用。要下载吗？";
++"alert.version.title" = "有新版本可用";
++"keymap.default" = "默认";
++"keymap.sheet.name" = "按键映射名称";
++"keymap.title" = "%@ 按键映射";
++"keymap.title.empty" = "创建新的按键映射";
++"keymap.title.import" = "导入按键映射名称";
++"keymap.title.rename" = "重命名按键映射名称";
++"playapp.emptyKm" = "创建新的";
++"preferences.popover.duplicate.keymap" = "名称重复";
++"preferences.popover.malformed.keymap" = "名称无效";
++"preferences.popover.valid.keymap" = "名称有效";
++"preferences.toggle.showAppStorePopup" = "如果应用有官方 App Store 版本，显示提示";
++"settings.defaultKm" = "设为默认";
++"settings.deleteKm" = "删除按键映射";
++"settings.deleteKmFailed" = "无法删除按键映射 %@";
++"settings.picker.adaptiveRes.6" = "可调整大小";
++"settings.picker.aspectRatio.custom" = "自定义";
++"settings.picker.aspectRatio.free" = "自由";
++"settings.renameKm" = "重命名按键映射";
++"settings.settings.displayRotation" = "设备方向";
++"settings.settings.displayRotation.default" = "默认";
++"settings.settings.displayRotation.flipFix" = "翻转修复";
++"settings.settings.displayRotation.landscapeRight" = "横向右侧";
++"settings.settings.displayRotation.portrait" = "纵向";
++"settings.settings.displayRotation.portraitUpsideDown" = "纵向倒置";
++"settings.toggle.blockSleepSpamming" = "阻止 usleep 调用频繁发送";
++"settings.toggle.blockSleepSpamming.help" = "阻止应用频繁调用 usleep() 系统调用，以避免资源耗尽";
++"settings.toggle.checkMicPermissionSync" = "同步检查麦克风权限";
++"settings.toggle.checkMicPermissionSync.help" = "强制同步检查麦克风权限。可修复部分应用提示未授予麦克风权限的问题";
++"settings.toggle.disableBuiltinMouse" = "禁用内置鼠标支持";
++"settings.toggle.disableBuiltinMouse.help" = "禁用应用的内置鼠标支持，以避免点击冲突。";
++"settings.toggle.floatingWindow" = "浮动窗口";
++"settings.toggle.hideTitleBar" = "隐藏标题栏";
++"settings.toggle.ignoreUnityKeyboardInitializationError" = "忽略 Unity 键盘初始化错误";
++"settings.toggle.ignoreUnityKeyboardInitializationError.help" = "避免因断言失败 \"[KeyboardDelegate Initialize] called after creating keyboard\" 导致崩溃";
++"settings.toggle.limitMotionUpdateFrequency" = "限制运动传感器更新频率";
++"settings.toggle.limitMotionUpdateFrequency.help" = "限制运动传感器更新频率，以避免 CPU 使用率过高（Unity 游戏中常见）。";

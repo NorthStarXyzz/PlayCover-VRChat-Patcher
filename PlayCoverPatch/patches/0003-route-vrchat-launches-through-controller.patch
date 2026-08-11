@@ -1,0 +1,266 @@
+diff --git a/PlayCover/Model/PlayApp.swift b/PlayCover/Model/PlayApp.swift
+--- a/PlayCover/Model/PlayApp.swift
++++ b/PlayCover/Model/PlayApp.swift
+@@ -61,9 +61,11 @@ class PlayApp: BaseApp {
+     lazy var container = AppContainer(bundleId: info.bundleIdentifier)
+ 
+     // MARK: - Launch
+-    func launch() async {
+-        do {
+-            isStarting = true
++    func launch(mode: PlayAppLaunchMode = .automatic) async {
++        let resolvedLaunchMode = mode.resolved(for: info.bundleIdentifier)
++        isStarting = true
++        defer { isStarting = false }
+ 
++        do {
+             if prohibitedToPlay {
+                 await clearAllCache()
+@@ -98,18 +100,19 @@ class PlayApp: BaseApp {
+             if try !PlayTools.isInstalled() {
+                 Log.shared.error("PlayTools are not installed! Please move PlayCover.app into Applications!")
+             } else if try !Macho.isMachoValidArch(executable) {
+                 Log.shared.error("The app threw an error during conversion.")
+             } else {
+                 // Clear any debug-related env vars that could affect the launched app
+                 self.clearDebugAffectingEnvironment()
+ 
+-                if settings.openWithLLDB {
++                if settings.openWithLLDB && resolvedLaunchMode == .standard {
+                     try Shell.lldb(executable, withTerminalWindow: settings.openLLDBWithTerminal)
++                } else if resolvedLaunchMode == .vrChatCompatible {
++                    try await runVRChatCompatible()
+                 } else {
+-                    runAppExec() // Splitting to reduce complexity
++                    runAppExec()
+                 }
+             }
+-            isStarting = false
+         } catch {
+             Log.shared.error(error)
+         }
+@@ -151,39 +154,117 @@ extension PlayApp {
+         }
+     }
+ 
+-    func runAppExec() {
++    func runVRChatCompatible() async throws {
++        let coordinator = VRChatMemoryPolicyCoordinator.shared
++        try await coordinator.prepareForCompatibleLaunch(
++            bundleIdentifier: info.bundleIdentifier
++        )
++        try await coordinator.launchWillBegin()
++
++        do {
++            try await runAppExecAwaitingLaunchServices()
++        } catch {
++            let launchError = error
++            do {
++                try await coordinator.launchServicesFailedBeforeBinding()
++            } catch let cancellationError {
++                Log.shared.log(
++                    "VRChat controller pre-bind cancellation failed: "
++                        + cancellationError.localizedDescription,
++                    isError: true
++                )
++            }
++            throw launchError
++        }
++
++        try await coordinator.launchServicesSucceeded()
++    }
++
++    func runAppExecAwaitingLaunchServices() async throws {
+         let config = NSWorkspace.OpenConfiguration()
+ 
+         // Prevent propagating debugging-related variables to child process
+         for (key, _) in ProcessInfo.processInfo.environment where key.hasPrefix("DYLD_") {
+             unsetenv(key)
+         }
+         for key in PlayApp.metalEnvKeys {
+             unsetenv(key)
+         }
+ 
+-        NSWorkspace.shared.openApplication(
+-            at: aliasURL,
+-            configuration: config,
+-            completionHandler: { runningApp, error in
+-                guard error == nil else { return }
+-                // Run a thread loop in the background to handle background tasks
+-                Task(priority: .background) {
+-                    if let runningApp = runningApp {
+-                        while !(runningApp.isTerminated) {
+-                            if runningApp.isActive {
+-                                self.disableTimeOut()
+-                            } else {
+-                                self.enableTimeOut()
+-                            }
+-                            sleep(1)
+-                        }
+-                        sleep(1)
++        let runningApp: NSRunningApplication = try await withCheckedThrowingContinuation {
++            continuation in
++            NSWorkspace.shared.openApplication(
++                at: aliasURL,
++                configuration: config,
++                completionHandler: { runningApp, error in
++                    if let error = error {
++                        continuation.resume(throwing: error)
++                        return
+                     }
+-                    // Things that are run after the app is closed
+-                    self.lockKeyCover()
++                    guard let runningApp = runningApp else {
++                        continuation.resume(throwing: NSError(
++                            domain: "io.playcover.PlayCover.LaunchServices",
++                            code: 1,
++                            userInfo: [NSLocalizedDescriptionKey: NSLocalizedString(
++                                "error.launchServices.noApplication", comment: ""
++                            )]
++                        ))
++                        return
++                    }
++                    continuation.resume(returning: runningApp)
+                 }
+-            }
+-        )
++            )
++        }
++
++        // Run a thread loop in the background to handle background tasks.
++        Task(priority: .background) {
++            while !runningApp.isTerminated {
++                if runningApp.isActive {
++                    self.disableTimeOut()
++                } else {
++                    self.enableTimeOut()
++                }
++                sleep(1)
++            }
++            sleep(1)
++            // Things that are run after the app is closed
++            self.lockKeyCover()
++        }
+     }
++
++    func runAppExec() {
++        let config = NSWorkspace.OpenConfiguration()
++
++        // Prevent propagating debugging-related variables to child process
++        for (key, _) in ProcessInfo.processInfo.environment where key.hasPrefix("DYLD_") {
++            unsetenv(key)
++        }
++        for key in PlayApp.metalEnvKeys {
++            unsetenv(key)
++        }
++
++        NSWorkspace.shared.openApplication(
++            at: aliasURL,
++            configuration: config,
++            completionHandler: { runningApp, error in
++                guard error == nil else { return }
++                // Run a thread loop in the background to handle background tasks
++                Task(priority: .background) {
++                    if let runningApp = runningApp {
++                        while !(runningApp.isTerminated) {
++                            if runningApp.isActive {
++                                self.disableTimeOut()
++                            } else {
++                                self.enableTimeOut()
++                            }
++                            sleep(1)
++                        }
++                        sleep(1)
++                    }
++                    // Things that are run after the app is closed
++                    self.lockKeyCover()
++                }
++            }
++        )
++    }
+ }
+diff --git a/PlayCover/Views/App Views/PlayAppView.swift b/PlayCover/Views/App Views/PlayAppView.swift
+--- a/PlayCover/Views/App Views/PlayAppView.swift
++++ b/PlayCover/Views/App Views/PlayAppView.swift
+@@ -23,19 +23,20 @@ struct PlayAppView: View {
+                                app: viewModel.app,
+                                isList: isList)
+             .gesture(TapGesture(count: 2).onEnded {
+-                // Launch the app from a separate thread (allow us to Sayori it if needed)
+-                Task(priority: .userInitiated) {
+-                    if !viewModel.app.isStarting {
+-                        viewModel.showStartingProgress = true
+-                        await viewModel.app.launch()
+-                        viewModel.showStartingProgress = false
+-                    }
+-                }
++                launchApp(mode: .automatic)
+             })
+             .simultaneousGesture(TapGesture().onEnded {
+                 selected = viewModel.app
+             })
+             .contextMenu {
++                if VRChatMemoryPolicyManifest.matches(
++                    bundleIdentifier: viewModel.app.info.bundleIdentifier
++                ) {
++                    Button("playapp.launch.standard", systemImage: "play.fill") {
++                        launchApp(mode: .standard)
++                    }
++                    Divider()
++                }
+                 Button("playapp.settings", systemImage: "gear", action: {
+                     viewModel.showSettings.toggle()
+                 })
+@@ -93,6 +94,17 @@ struct PlayAppView: View {
+             }
+     }
+ 
++    func launchApp(mode: PlayAppLaunchMode) {
++        // Launch from a separate task so the UI remains responsive.
++        Task(priority: .userInitiated) {
++            if !viewModel.app.isStarting {
++                viewModel.showStartingProgress = true
++                await viewModel.app.launch(mode: mode)
++                viewModel.showStartingProgress = false
++            }
++        }
++    }
++
+     func deletePreferences(app: String) {
+         let plistURL = FileManager.default.homeDirectoryForCurrentUser
+             .appendingPathComponent("Library")
+diff --git a/PlayCover/en.lproj/Localizable.strings b/PlayCover/en.lproj/Localizable.strings
+--- a/PlayCover/en.lproj/Localizable.strings
++++ b/PlayCover/en.lproj/Localizable.strings
+@@ -336,4 +336,14 @@
+ "alert.start.anyway" = "Start Anyway";
+ "alert.version.title" = "New Version Available";
+ "alert.version.text" = "A new version for %@ is available. Do you want to download it?";
++"playapp.launch.standard" = "Launch VRChat without memory compatibility";
++"error.launchServices.noApplication" = "LaunchServices did not return a running application.";
++"error.vrchatMemoryPolicy.wrongBundle" = "Memory compatibility does not support bundle %@.";
++"error.vrchatMemoryPolicy.busy" = "A VRChat memory-compatibility session is already active.";
++"error.vrchatMemoryPolicy.timeout" = "The root VRChat controller did not reach WAITING within 30 seconds.";
++"error.vrchatMemoryPolicy.peer" = "The VRChat controller socket peer is not an authenticated root process.";
++"error.vrchatMemoryPolicy.connection" = "Could not connect to the root VRChat controller: %@";
++"error.vrchatMemoryPolicy.protocol" = "The VRChat controller protocol failed (%@).";
++"error.vrchatMemoryPolicy.cancel" = "Could not cancel the controller's pre-bind wait: %@";
++"error.vrchatMemoryPolicy.lateCancel" = "The controller already bound the target; PlayCover will not send a late cancellation.";
+ 
+diff --git a/PlayCover/zh-Hans.lproj/Localizable.strings b/PlayCover/zh-Hans.lproj/Localizable.strings
+--- a/PlayCover/zh-Hans.lproj/Localizable.strings
++++ b/PlayCover/zh-Hans.lproj/Localizable.strings
+@@ -385,3 +385,13 @@
+ "ipaLibrary.AlphabeticalSort" = "按字母顺序排列应用来源";
+ "alert.install.anyway" = "仍然安装";
+ "alert.open.appstore" = "打开 Mac App Store";
++"playapp.launch.standard" = "不使用内存兼容启动 VRChat";
++"error.launchServices.noApplication" = "LaunchServices 未返回正在运行的应用。";
++"error.vrchatMemoryPolicy.wrongBundle" = "内存兼容不支持 bundle %@。";
++"error.vrchatMemoryPolicy.busy" = "已有 VRChat 内存兼容会话正在运行。";
++"error.vrchatMemoryPolicy.timeout" = "root VRChat controller 未在 30 秒内进入 WAITING。";
++"error.vrchatMemoryPolicy.peer" = "VRChat controller socket 的对端不是已验证的 root 进程。";
++"error.vrchatMemoryPolicy.connection" = "无法连接 root VRChat controller：%@";
++"error.vrchatMemoryPolicy.protocol" = "VRChat controller 协议失败（%@）。";
++"error.vrchatMemoryPolicy.cancel" = "无法取消 controller 的绑定前等待：%@";
++"error.vrchatMemoryPolicy.lateCancel" = "controller 已绑定目标；PlayCover 不会发送过期取消。";

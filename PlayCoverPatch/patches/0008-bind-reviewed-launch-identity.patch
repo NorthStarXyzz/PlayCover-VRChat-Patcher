@@ -1,0 +1,87 @@
+diff --git a/PlayCover/Model/PlayApp.swift b/PlayCover/Model/PlayApp.swift
+index 9076a1e..bf706ef 100644
+--- a/PlayCover/Model/PlayApp.swift
++++ b/PlayCover/Model/PlayApp.swift
+@@ -199,12 +199,14 @@ extension PlayApp {
+     func runVRChatCompatible() async throws {
+         let coordinator = VRChatMemoryPolicyCoordinator.shared
+         try await coordinator.prepareForCompatibleLaunch(
+-            bundleIdentifier: info.bundleIdentifier
++            bundleIdentifier: info.bundleIdentifier,
++            appURL: url
+         )
+         try await coordinator.launchWillBegin()
+ 
++        let runningApp: NSRunningApplication
+         do {
+-            try await runAppExecAwaitingLaunchServices()
++            runningApp = try await runAppExecAwaitingLaunchServices()
+         } catch {
+             let launchError = error
+             do {
+@@ -219,10 +221,23 @@ extension PlayApp {
+             throw launchError
+         }
+ 
+-        try await coordinator.launchServicesSucceeded()
++        do {
++            try await coordinator.bindLaunchServicesProcess(
++                pid: runningApp.processIdentifier,
++                bundleURL: runningApp.bundleURL,
++                executableURL: runningApp.executableURL
++            )
++        } catch {
++            // Terminate exactly the application object returned by
++            // LaunchServices. The coordinator has already cancelled or closed
++            // its controller session according to whether TARGET_BOUND arrived.
++            _ = runningApp.forceTerminate()
++            throw error
++        }
+     }
+ 
+-    func runAppExecAwaitingLaunchServices() async throws {
++    func runAppExecAwaitingLaunchServices() async throws
++        -> NSRunningApplication {
+         let config = NSWorkspace.OpenConfiguration()
+ 
+         // Prevent propagating debugging-related variables to child process
+@@ -272,6 +287,7 @@ extension PlayApp {
+             // Things that are run after the app is closed
+             self.lockKeyCover()
+         }
++        return runningApp
+     }
+ 
+     func runAppExec() {
+diff --git a/PlayCover/en.lproj/Localizable.strings b/PlayCover/en.lproj/Localizable.strings
+index 0533f2a..cf34bd2 100644
+--- a/PlayCover/en.lproj/Localizable.strings
++++ b/PlayCover/en.lproj/Localizable.strings
+@@ -378,6 +378,11 @@
+ "error.vrchatMemoryPolicy.authorizationDenied" = "Administrator authorization was denied or cancelled (status %d).";
+ "error.vrchatMemoryPolicy.authorizationExecute" = "The fixed privileged runner could not be started (status %d).";
+ "error.vrchatReadOnly.importRequired" = "VRChat cannot be installed or exported by this customized PlayCover because that path would rewrite the app. Import the exact compatible copy with PlayCover VRChat Patcher.";
++"error.vrchatIdentity.unexpectedURL" = "VRChat must be the exact independent-library app at %@; refusing %@.";
++"error.vrchatIdentity.unsafePath" = "The reviewed VRChat path is unsafe at %@ (%@).";
++"error.vrchatIdentity.mismatch" = "The reviewed VRChat composite identity does not match (%@).";
++"error.vrchatIdentity.signature" = "The reviewed VRChat code signature is invalid (status %d).";
++"error.vrchatIdentity.pid" = "LaunchServices returned PID %d but the controller bound PID %d.";
+ "error.vrchatReadOnly.repairRequired" = "Read-only VRChat validation found that a repair would be required (%@). Launch was refused without modifying the app.";
+ "error.vrchatReadOnly.reason.playtools_present" = "PlayTools is present";
+ "error.vrchatReadOnly.reason.entitlements_mismatch" = "entitlements differ";
+diff --git a/PlayCover/zh-Hans.lproj/Localizable.strings b/PlayCover/zh-Hans.lproj/Localizable.strings
+index c4d5010..5a9180f 100644
+--- a/PlayCover/zh-Hans.lproj/Localizable.strings
++++ b/PlayCover/zh-Hans.lproj/Localizable.strings
+@@ -428,6 +428,11 @@
+ "error.vrchatMemoryPolicy.authorizationDenied" = "管理员授权被拒绝或取消（状态 %d）。";
+ "error.vrchatMemoryPolicy.authorizationExecute" = "无法启动固定特权 runner（状态 %d）。";
+ "error.vrchatReadOnly.importRequired" = "定制版 PlayCover 不能安装或导出 VRChat，因为该流程会重写应用。请使用 PlayCover VRChat Patcher 导入精确兼容副本。";
++"error.vrchatIdentity.unexpectedURL" = "VRChat 必须是独立应用库中的精确副本 %@；已拒绝 %@。";
++"error.vrchatIdentity.unsafePath" = "已审阅的 VRChat 路径在 %@ 不安全（%@）。";
++"error.vrchatIdentity.mismatch" = "已审阅的 VRChat 复合身份不匹配（%@）。";
++"error.vrchatIdentity.signature" = "已审阅的 VRChat 代码签名无效（状态 %d）。";
++"error.vrchatIdentity.pid" = "LaunchServices 返回 PID %d，但控制器绑定了 PID %d。";
+ "error.vrchatReadOnly.repairRequired" = "只读 VRChat 校验发现需要修复（%@）；程序没有修改应用，并已拒绝启动。";
+ "error.vrchatReadOnly.reason.playtools_present" = "检测到 PlayTools";
+ "error.vrchatReadOnly.reason.entitlements_mismatch" = "entitlements 不一致";

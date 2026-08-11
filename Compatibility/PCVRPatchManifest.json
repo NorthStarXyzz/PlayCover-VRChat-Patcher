@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 2,
+  "patchID": "pcvr-parallel-pc-55638e9-vrc-2026.2.30300-1365-macos-25g70",
+  "upstreamCommit": "55638e98f36eac1f3d09803799480e9d83f663f8",
+  "controllerBuildID": "25G70-vrchat-2026.2.30300-1365-r6",
+  "controllerProtocol": 2,
+  "policy": {
+    "defaultMode": "automatic75Percent",
+    "minimumGiB": 4,
+    "maximumPhysicalMemoryPercent": 75,
+    "stepGiB": 1
+  },
+  "targetWaitSeconds": 300,
+  "originalPlayCoverBundleIdentifier": "io.playcover.PlayCover",
+  "patchedPlayCoverBundleIdentifier": "io.github.northstarxyzz.PlayCoverVRChat",
+  "vrChatBundleIdentifier": "com.vrchat.mobile",
+  "vrChatDestinationRelativePath": "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat/Applications/com.vrchat.mobile.app"
+}

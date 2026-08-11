@@ -1,0 +1,4 @@
+PCVR-INSTALL/1
+packageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy
+packageVersion=0.1.0
+controllerBuildID=25G70-vrchat-2026.2.30300-1365-r6

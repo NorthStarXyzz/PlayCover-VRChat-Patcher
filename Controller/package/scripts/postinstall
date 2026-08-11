@@ -1,0 +1,53 @@
+#!/bin/zsh -p
+
+set -eu
+setopt NO_RCS PIPE_FAIL
+
+script_dir=${0:A:h}
+source "$script_dir/common.zsh"
+
+validate_installer_context "$@"
+require_supported_host
+verify_file "$install_journal" 400 "$install_journal_sha"
+require_absent "$uninstall_journal"
+require_absent "$operation_claim"
+[[ -z $(operation_claim_temporaries) ]] || \
+    fail "An operation-claim temporary remains after preinstall."
+require_absent "$runtime_dir"
+
+verify_directory /usr/local/bin '0:0:755:Directory:-'
+verify_directory /usr/local/libexec '0:0:755:Directory:-'
+verify_directory "$package_dir" '0:0:755:Directory:-'
+verify_package_entries
+
+for target in "$controller" "$runner" "$attestation"; do
+    [[ -f "$target" && ! -L "$target" ]] || fail "Missing package payload object: $target"
+    /usr/sbin/chown root:wheel "$target"
+    /usr/bin/chflags 0 "$target"
+    /bin/chmod -N "$target"
+    clear_and_verify_no_xattrs "$target"
+done
+/bin/chmod 0500 "$controller"
+/bin/chmod 0555 "$runner"
+/bin/chmod 0444 "$attestation"
+
+verify_file "$controller" 500 "$current_controller_sha"
+/usr/bin/codesign --verify --strict "$controller"
+verify_file "$runner" 555 "$current_runner_sha"
+verify_file "$attestation" 444 "$current_attestation_sha"
+verify_no_xattrs "$controller"
+verify_no_xattrs "$runner"
+verify_no_xattrs "$attestation"
+
+if [[ -e "$runner_quarantine" || -L "$runner_quarantine" ]]; then
+    verify_predecessor_runner "$runner_quarantine"
+    /bin/unlink "$runner_quarantine"
+fi
+if [[ -e "$controller_quarantine" || -L "$controller_quarantine" ]]; then
+    verify_predecessor_controller "$controller_quarantine"
+    /bin/unlink "$controller_quarantine"
+fi
+verify_package_entries
+/bin/unlink "$install_journal"
+print -- "Verified the exact r6 controller, runner, and installation attestation."
+exit 0

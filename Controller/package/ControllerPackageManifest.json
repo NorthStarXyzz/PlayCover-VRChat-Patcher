@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "controllerPackage": {
+    "relativePath": "Controller/PlayCoverVRChatMemoryPolicy.pkg",
+    "identifier": "io.github.northstarxyzz.pcvrpatcher.memory-policy",
+    "version": "0.1.0",
+    "sha256": "2296e1072c78574ac180672220ab9c651470d4e8cc09460fa075247b60b1f488",
+    "controllerBuildID": "25G70-vrchat-2026.2.30300-1365-r6",
+    "controllerQuarantinePath": "/usr/local/libexec/playcover-vrchat-memory-policy/.controller.pcvr-install",
+    "runnerQuarantinePath": "/usr/local/bin/.playcover-vrchat-memory-policy.pcvr-install",
+    "runner": {
+      "path": "/usr/local/bin/playcover-vrchat-memory-policy",
+      "sha256": "26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af",
+      "uid": 0,
+      "gid": 0,
+      "mode": "0555",
+      "linkCount": 1
+    },
+    "controller": {
+      "path": "/usr/local/libexec/playcover-vrchat-memory-policy/controller",
+      "sha256": "824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c",
+      "uid": 0,
+      "gid": 0,
+      "mode": "0500",
+      "linkCount": 1
+    },
+    "attestation": {
+      "path": "/usr/local/libexec/playcover-vrchat-memory-policy/installation.json",
+      "sha256": "4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5",
+      "uid": 0,
+      "gid": 0,
+      "mode": "0444",
+      "linkCount": 1
+    },
+    "uninstallJournal": {
+      "path": "/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.uninstall",
+      "sha256": "c66d1be68d75822cf6c9b91f47aaf54649c263d59c5a0562e21acc224cefaa5f",
+      "uid": 0,
+      "gid": 0,
+      "mode": "0400",
+      "linkCount": 1
+    },
+    "installJournal": {
+      "path": "/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.install",
+      "sha256": "9f55df52e95af5170c3de7451ef4805082d79ef69a4d615e0ed372eba9fadf00",
+      "uid": 0,
+      "gid": 0,
+      "mode": "0400",
+      "linkCount": 1
+    },
+    "operationClaim": {
+      "path": "/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.operation",
+      "sha256": "c68b37a41ecacd9c60f322dabe15ce1d7bbcff5a3dd9e9926ce014b9c74d13c3",
+      "uid": 0,
+      "gid": 0,
+      "mode": "0400",
+      "linkCount": 1
+    },
+    "timeoutSeconds": 900,
+    "pollMilliseconds": 500
+  },
+  "reviewedPredecessors": [
+    {
+      "name": "r5",
+      "controllerSHA256": "7db6d5e7cb4ae7217878290ca754183249a3069b6d4bb4e8077a3f911b578d52",
+      "runnerSHA256": "06baf9056317307db302f65b4d12c453fab752dbe8bd81c00113d26ceb912f40"
+    },
+    {
+      "name": "observed-r3",
+      "controllerSHA256": "1f1aa8afdf447b31d97336bc264928ce6ce2c2324d3603e7e41f72d93281e49d",
+      "runnerSHA256": "73f2587e1793ad89697f879d1711481df677f069284cf55751649b8d674321ca"
+    },
+    {
+      "name": "pre-xattr-fix-r6",
+      "controllerSHA256": "b8c28482f675761b8c6ae3422c87b01f58c1356ae56b5556dec2d1eec825e67f",
+      "runnerSHA256": "5a712cf92c7c54cf70f554b0804bab28923edf911db82edd1b65b7e010998a87"
+    },
+    {
+      "name": "pre-provenance-fix-r6",
+      "controllerSHA256": "b8c28482f675761b8c6ae3422c87b01f58c1356ae56b5556dec2d1eec825e67f",
+      "runnerSHA256": "039047ea409a4cd5b27f142b657f239ec99bbed6e2ee1a866bf031a81973f558"
+    }
+  ],
+  "developmentSignaturePolicy": "unsigned-local-alpha",
+  "requiredMacOSBuild": "25G70"
+}
