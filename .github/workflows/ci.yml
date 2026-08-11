@@ -23,6 +23,9 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Verify repository policy and compatibility manifest
+        env:
+          PCVR_SKIP_PACKAGE_GATE: "1"
+          PCVR_ALLOW_NON_TARGET_BUILD: "1"
         run: Scripts/verify-repository.sh
 
       - name: Run Swift transaction and manifest tests
@@ -69,6 +72,8 @@ jobs:
     name: Verify pinned PlayCover patch series
     runs-on: macos-26
     timeout-minutes: 60
+    env:
+      PCVR_ALLOW_NON_TARGET_BUILD: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6

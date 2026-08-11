@@ -36,10 +36,13 @@ done
     print -u2 -- "Refusing to replace package output: $output"
     exit 73
 }
-[[ $(/usr/bin/sw_vers -buildVersion) == 25G70 ]] || {
-    print -u2 -- "Deterministic package builds require macOS build 25G70."
-    exit 79
-}
+if [[ $(/usr/bin/sw_vers -buildVersion) != 25G70 ]]; then
+    [[ ${PCVR_ALLOW_NON_TARGET_BUILD:-0} == 1 ]] || {
+        print -u2 -- "Deterministic package builds require macOS build 25G70."
+        exit 79
+    }
+    print -u2 -- "Warning: building an unpublishable package on non-target macOS; runtime installation still requires 25G70."
+fi
 
 /usr/bin/python3 -m json.tool "$manifest" >/dev/null
 /bin/zsh "$controller_root/build.sh" >/dev/null

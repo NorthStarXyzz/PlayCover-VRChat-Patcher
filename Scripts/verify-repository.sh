@@ -99,28 +99,32 @@ for forbidden in $repo_root/**/*.(ipa|p12|mobileprovision|provisionprofile)(N); 
     exit 1
 done
 
-package_test_root=$(/usr/bin/mktemp -d /tmp/pcvr-package-gate.XXXXXX)
-cleanup_package_gate() {
-    local result=$?
-    trap - EXIT INT TERM HUP
-    if [[ -d "$package_test_root" &&
-          "$package_test_root" == /tmp/pcvr-package-gate.* ]]; then
-        /bin/rm -R "$package_test_root"
-    fi
-    exit "$result"
-}
-trap cleanup_package_gate EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
-/bin/mkdir "$package_test_root/a" "$package_test_root/b"
-for package_copy in a b; do
-    candidate="$package_test_root/$package_copy/PlayCoverVRChatMemoryPolicy.pkg"
-    /bin/zsh "$repo_root/Controller/package/build-package.sh" --output "$candidate"
-    /bin/zsh "$repo_root/Controller/package/verify-package.sh" "$candidate"
-done
-/usr/bin/cmp \
-    "$package_test_root/a/PlayCoverVRChatMemoryPolicy.pkg" \
-    "$package_test_root/b/PlayCoverVRChatMemoryPolicy.pkg"
+if [[ ${PCVR_SKIP_PACKAGE_GATE:-0} == 1 ]]; then
+    print -- "Skipped deterministic package gate (non-target CI host)."
+else
+    package_test_root=$(/usr/bin/mktemp -d /tmp/pcvr-package-gate.XXXXXX)
+    cleanup_package_gate() {
+        local result=$?
+        trap - EXIT INT TERM HUP
+        if [[ -d "$package_test_root" &&
+              "$package_test_root" == /tmp/pcvr-package-gate.* ]]; then
+            /bin/rm -R "$package_test_root"
+        fi
+        exit "$result"
+    }
+    trap cleanup_package_gate EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
+    /bin/mkdir "$package_test_root/a" "$package_test_root/b"
+    for package_copy in a b; do
+        candidate="$package_test_root/$package_copy/PlayCoverVRChatMemoryPolicy.pkg"
+        /bin/zsh "$repo_root/Controller/package/build-package.sh" --output "$candidate"
+        /bin/zsh "$repo_root/Controller/package/verify-package.sh" "$candidate"
+    done
+    /usr/bin/cmp \
+        "$package_test_root/a/PlayCoverVRChatMemoryPolicy.pkg" \
+        "$package_test_root/b/PlayCoverVRChatMemoryPolicy.pkg"
+fi
 
 print -- "Repository policy checks passed."
