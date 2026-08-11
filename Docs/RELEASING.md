@@ -9,7 +9,7 @@ repair PlayCover because it contains no reviewed PlayCover payload.
 The source-only Alpha contains:
 
 - the complete tagged project source;
-- an ad-hoc-signed, source-only SwiftUI Patcher;
+- an ad-hoc-signed, source-only arm64 SwiftUI Patcher in a DMG;
 - an SPDX 2.3 software bill of materials (SBOM);
 - a hash inventory for the upstream commit, patch series, overlays, and
   compatibility manifests;
@@ -76,21 +76,18 @@ The release directory contains exactly these release artifacts:
 
 ```text
 PlayCover-VRChat-Patcher-0.1.0-alpha.1-source.tar.gz
-PlayCover-VRChat-Patcher-0.1.0-alpha.1-source-only-macos-arm64.zip
+PlayCover-VRChat-Patcher-0.1.0-alpha.1-arm64.dmg
 PlayCover-VRChat-Patcher-0.1.0-alpha.1-patch-inventory.json
 PlayCover-VRChat-Patcher-0.1.0-alpha.1.spdx.json
 SHA256SUMS
 ```
 
 The source archive comes from `git archive` at the annotated tag. Its gzip
-header has no local filename or timestamp. ZIP entries are sorted and use the
-release commit time, Unix modes, and stored compression. The inventory and
-SBOM use only tracked compatibility and patch metadata plus the release commit
-time. This removes machine-local paths and wall-clock time from those files.
-
-The compiled Swift binary can still change when the Apple toolchain changes.
-Compare app ZIPs only when the Xcode, Swift, SDK, architecture, tag, and build
-settings are identical.
+header has no local filename or timestamp. The DMG contains only the source-only
+Patcher and an Applications shortcut; it has no PlayCover payload or controller
+package. The inventory and SBOM use only tracked compatibility and patch
+metadata plus the release commit time. The DMG is arm64 and its SHA256 is
+recorded in `SHA256SUMS`.
 
 ## Verify before upload
 
@@ -110,17 +107,18 @@ python3 -m json.tool \
   PlayCover-VRChat-Patcher-0.1.0-alpha.1.spdx.json >/dev/null
 ```
 
-Expand the ZIP into a temporary directory and verify the app again:
+Mount the DMG read-only and verify the app again:
 
 ```zsh
-repo_root=$(git rev-parse --show-toplevel)
 release_dir=$PWD
 verification_dir=$(mktemp -d)
-ditto -x -k \
-  "$release_dir/PlayCover-VRChat-Patcher-0.1.0-alpha.1-source-only-macos-arm64.zip" \
-  "$verification_dir"
+hdiutil attach -nobrowse -readonly \
+  -mountpoint "$verification_dir" \
+  "$release_dir/PlayCover-VRChat-Patcher-0.1.0-alpha.1-arm64.dmg"
+repo_root=$(git rev-parse --show-toplevel)
 "$repo_root/Scripts/verify-patcher-app.sh" \
   "$verification_dir/PlayCover VRChat Patcher.app"
+hdiutil detach "$verification_dir"
 ```
 
 Remove the temporary verification directory after inspection. Confirm that
@@ -142,8 +140,9 @@ disabled. Never test this Alpha by entering an administrator password.
   reviewed PlayTools patch as an SPDX file with a `PATCH_FOR` relationship.
 - `SHA256SUMS` verifies without warnings.
 - The release is marked **Developer Alpha / source-only / cannot patch**.
+- The DMG is arm64, ad-hoc signed, and not notarized.
 - No executable controller, VRChat asset, IPA, or patched PlayCover app is
   attached.
 
-Publish all five files together. Do not publish an app ZIP without its source
-archive, SPDX document, inventory, and checksum file.
+Publish the source archive, arm64 DMG, SPDX document, inventory, and checksum
+file together.

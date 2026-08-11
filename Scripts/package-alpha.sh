@@ -119,6 +119,12 @@ source_app="$work_directory/PlayCover VRChat Patcher.app"
 "$repo_root/Scripts/build-patcher-app.sh" --output "$source_app"
 "$repo_root/Scripts/verify-patcher-app.sh" "$source_app"
 
+app_arches=$(/usr/bin/lipo -archs "$source_app/Contents/MacOS/PlayCoverVRChatPatcher")
+[[ "$app_arches" == *arm64* ]] || {
+    print -u2 -- "The release Patcher must contain an arm64 executable (found: $app_arches)."
+    exit 79
+}
+
 manifest="$source_app/Contents/Resources/CompatibilityManifest.json"
 /usr/bin/python3 - "$manifest" <<'PY'
 import json
@@ -141,7 +147,7 @@ PY
 
 source_epoch=$(/usr/bin/git -C "$repo_root" show -s --format=%ct "$commit")
 source_archive="PlayCover-VRChat-Patcher-$version-source.tar.gz"
-app_archive="PlayCover-VRChat-Patcher-$version-source-only-macos-arm64.zip"
+app_dmg="PlayCover-VRChat-Patcher-$version-arm64.dmg"
 inventory_name="PlayCover-VRChat-Patcher-$version-patch-inventory.json"
 sbom_name="PlayCover-VRChat-Patcher-$version.spdx.json"
 
@@ -152,10 +158,41 @@ sbom_name="PlayCover-VRChat-Patcher-$version.spdx.json"
 /usr/bin/python3 "$repo_root/Scripts/reject-release-binaries.py" \
     --tar "$release_directory/$source_archive"
 
-/usr/bin/python3 "$repo_root/Scripts/create-deterministic-zip.py" \
-    --input "$source_app" \
-    --output "$release_directory/$app_archive" \
-    --source-date-epoch "$source_epoch"
+/bin/mkdir "$staging_root/dmg-root"
+/usr/bin/ditto --noqtn "$source_app" \
+    "$staging_root/dmg-root/PlayCover VRChat Patcher.app"
+/bin/ln -s /Applications "$staging_root/dmg-root/Applications"
+/usr/bin/hdiutil create \
+    -quiet \
+    -volname "PlayCover VRChat Patcher" \
+    -srcfolder "$staging_root/dmg-root" \
+    -format UDZO \
+    -imagekey zlib-level=9 \
+    "$release_directory/$app_dmg"
+
+verification_mount="$staging_root/dmg-mount"
+/bin/mkdir "$verification_mount"
+/usr/bin/hdiutil attach \
+    -nobrowse \
+    -readonly \
+    -mountpoint "$verification_mount" \
+    "$release_directory/$app_dmg" >/dev/null
+dmg_attached=1
+detach_dmg() {
+    if (( ${dmg_attached:-0} )); then
+        /usr/bin/hdiutil detach "$verification_mount" >/dev/null 2>&1 || true
+        dmg_attached=0
+    fi
+}
+cleanup_dmg() {
+    detach_dmg
+    cleanup
+}
+trap cleanup_dmg EXIT INT TERM HUP
+"$repo_root/Scripts/verify-patcher-app.sh" \
+    "$verification_mount/PlayCover VRChat Patcher.app"
+detach_dmg
+trap cleanup EXIT INT TERM HUP
 
 /usr/bin/python3 "$repo_root/Scripts/generate-release-inventory.py" \
     --repo-root "$repo_root" \
@@ -169,14 +206,12 @@ sbom_name="PlayCover-VRChat-Patcher-$version.spdx.json"
     --commit "$commit" \
     --output "$release_directory/$sbom_name"
 
-/usr/bin/python3 - "$release_directory/$source_archive" "$release_directory/$app_archive" <<'PY'
+/usr/bin/python3 - "$release_directory/$source_archive" <<'PY'
 import pathlib
 import sys
 import tarfile
-import zipfile
 
 source_path = pathlib.Path(sys.argv[1])
-zip_path = pathlib.Path(sys.argv[2])
 forbidden_suffixes = (
     ".app",
     ".dmg",
@@ -201,26 +236,12 @@ with tarfile.open(str(source_path), "r:gz") as archive:
             raise SystemExit("source archive contains a non-file entry: " + member.name)
         if member.name.lower().endswith(forbidden_suffixes):
             raise SystemExit("forbidden source archive member: " + member.name)
-
-with zipfile.ZipFile(str(zip_path), "r") as archive:
-    if archive.testzip() is not None:
-        raise SystemExit("source-only Patcher ZIP failed CRC verification")
-    names = archive.namelist()
-    if not names or any(
-        "/payload/" in name.lower()
-        or "/contents/resources/controller/" in name.lower()
-        or "vrchat-memory-policy-controller" in name.lower()
-        or name.lower().endswith(".ipa")
-        or name.lower().endswith(".pkg")
-        for name in names
-    ):
-        raise SystemExit("source-only Patcher ZIP contains a forbidden payload")
 PY
 
 (
     cd "$release_directory"
     LC_ALL=C /usr/bin/shasum -a 256 \
-        "$source_archive" "$app_archive" "$inventory_name" "$sbom_name" > SHA256SUMS
+        "$source_archive" "$app_dmg" "$inventory_name" "$sbom_name" > SHA256SUMS
     /usr/bin/shasum -a 256 -c SHA256SUMS
 )
 
