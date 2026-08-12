@@ -394,7 +394,7 @@ require_count 1 'static let protocolVersion = "PCVR/2"' \
     "$destination"
 require_count 1 'static let runnerPath = "/usr/local/bin/playcover-vrchat-memory-policy"' \
     "$destination"
-require_count 1 'static let controllerBuildID = "25G70-vrchat-2026\.2\.30300-1365-r6"' \
+require_count 1 'static let controllerBuildID = "capability-vrchat-2026\.2\.30300-1365-r7"' \
     "$destination"
 require_count 1 'static let reviewedRunnerSHA256 =' \
     "$destination"

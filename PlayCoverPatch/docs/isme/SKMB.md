@@ -21,6 +21,7 @@ not installed because this project limits all generated material to
 | SKMB-2026-08-11-010 | accepted | Installer-package controller bootstrap and Patcher completion | A, B, D, E, F, G | decisions/2026-08-11-010-installer-package-controller-bootstrap.md | pending |
 | SKMB-2026-08-11-011 | superseded | Canonical 34-key VRChat settings lifecycle and removal-only retained library | B, C, E, F | decisions/2026-08-11-011-canonical-vrchat-settings-lifecycle.md | pending |
 | SKMB-2026-08-11-012 | accepted | Small-tool lifecycle: mutable retained data and simple Remove | B, E, F, G | decisions/2026-08-11-012-small-tool-lifecycle.md | pending |
+| SKMB-2026-08-13-013 | accepted | Capability-based host compatibility; remove exact macOS/XNU lock | D, E, F | decisions/2026-08-13-013-capability-based-host-compatibility.md | pending |
 
 ## Named States
 
@@ -62,6 +63,7 @@ not installed because this project limits all generated material to
 | SKMB-2026-08-11-010-T3 | installing_controller | exact package receipt, attestation, runner metadata/hash, and r6 build identity verify within the 900-second window | fully_patched | Poll every 500ms, then write the final receipt and remove the transaction journal | SKMB-2026-08-11-010 |
 | SKMB-2026-08-11-010-T4 | installing_controller | Installer is cancelled, fails, exceeds 900 seconds, or post-install identity differs | controller_setup_required | Keep the journal and expose Repair; never report success | SKMB-2026-08-11-010 |
 | SKMB-2026-08-11-012-T1 | exact customized App installed | Inspect/Remove | fully_patched/removing | Treat the independent library as mutable user data; verify only transaction-owned App, receipt, and helper before Remove | SKMB-2026-08-11-012 |
+| SKMB-2026-08-13-013-T1 | host preflight | current build/XNU differs from tested metadata | continue | Use arm64 and live policy/identity checks instead of a string-version rejection | SKMB-2026-08-13-013 |
 
 ## Invariants
 
@@ -89,6 +91,8 @@ not installed because this project limits all generated material to
 | SKMB-2026-08-11-010-I4 | Remove preserves both game libraries and may delete the exact parallel App only after the absent/exact root installation is safely removed; the exact r6 root-owned runner removes controller, runner, attestation, and pkg receipt through the already accepted Authorization Services boundary | SKMB-2026-08-11-010 |
 | SKMB-2026-08-11-010-I5 | Clean uninstall uses a fixed persistent root-owned journal, deletes the runner last, and accepts only journal-declared transitions plus the exact final runner-only/receipt-absent recovery subset; every other partial combination is unknown | SKMB-2026-08-11-010 |
 | SKMB-2026-08-11-010-I6 | Launch, Installer preflight, and uninstall share one atomic root-owned operation claim; a live owner excludes every other actor before state caching, stale recovery is identity-bound, and uninstall holds ownership through runner self-unlink | SKMB-2026-08-11-010 |
+| SKMB-2026-08-13-013-I1 | Tested macOS/build/XNU strings are informational metadata; they are never sufficient to authorize or deny a session | SKMB-2026-08-13-013 |
+| SKMB-2026-08-13-013-I2 | arm64, exact VRChat identity, policy readback, runtime-image review, and fail-closed rollback remain mandatory on every host | SKMB-2026-08-13-013 |
 | SKMB-2026-08-11-012-I1 | App Settings, imported VRChat, keymaps, caches, and the independent library are mutable user data after creation and are not receipt or Remove identity anchors | SKMB-2026-08-11-012 |
 | SKMB-2026-08-11-012-I2 | Remove does not inspect, rewrite, delete, or otherwise condition success on either PlayCover game library | SKMB-2026-08-11-012 |
 | SKMB-2026-08-11-012-I3 | The customized build defaults VRChat PlayChain off and bypasses KeyCover for VRChat without imposing a canonical 34-key settings state machine | SKMB-2026-08-11-012 |
@@ -110,6 +114,7 @@ not installed because this project limits all generated material to
 | SKMB-2026-08-11-009-F2 | LaunchServices returns another location/PID or controller TARGET_BOUND does not match | Terminate the returned application, close/cancel the controller session as legally permitted, and never continue to LEASE_ACTIVE | SKMB-2026-08-11-009 |
 | SKMB-2026-08-11-010-F1 | Package is missing, altered, cancelled, fails, times out, or does not produce the exact reviewed installation | Preserve the verified parallel copy and transaction journal as controller_setup_required; Repair retries setup and VRChat remains fail-closed | SKMB-2026-08-11-010 |
 | SKMB-2026-08-11-010-F2 | Remove cannot prove the controller absent, inactive, and safely uninstallable | Keep the parallel App and independent library unchanged; do not partially remove | SKMB-2026-08-11-010 |
+| SKMB-2026-08-13-013-F1 | Host architecture is not arm64 or live policy/identity capability fails | Stop before/at the session and report failure; never fall back to ordinary launch | SKMB-2026-08-13-013 |
 | SKMB-2026-08-11-003-F1 | Reviewed Cartfile.resolved is missing or differs | Refuse applied validation; do not resolve a floating replacement | SKMB-2026-08-11-003 |
 | SKMB-2026-08-11-004-F1 | PlayTools exported-tree path, file hash, mode, type, lock, or complete tree digest differs | Refuse to patch or build; do not infer, replace the lock, merge, reset, or update the dependency | SKMB-2026-08-11-004 |
 | SKMB-2026-08-11-005-F1 | PlayCover SwiftPM state exists in a source tree or its applied lock, mode, type, children, or pin set differs | Refuse source/application validation; never overwrite or infer a replacement resolution | SKMB-2026-08-11-005 |

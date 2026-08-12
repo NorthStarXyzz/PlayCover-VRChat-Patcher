@@ -114,11 +114,11 @@ public struct CompatibilityManifest: Codable, Sendable, Equatable {
             )
         }
         guard architecture == "arm64",
-              host.productVersion == "26.6",
-              host.buildVersion == "25G70",
-              host.xnuVersion == "xnu-12377.161.13~4" else {
+              !host.productVersion.isEmpty,
+              !host.buildVersion.isEmpty,
+              !host.xnuVersion.isEmpty else {
             throw PatcherError.invalidManifest(
-                "v0.1 requires the reviewed arm64 macOS/XNU build"
+                "the manifest must describe a non-empty tested arm64 host"
             )
         }
         guard policy.mode == .automatic75Percent,
@@ -197,7 +197,7 @@ public struct ControllerPackageRequirement: Codable, Sendable, Equatable {
               version == "0.1.0",
               AppIdentity.isSHA256(sha256),
               controllerBuildID ==
-                "25G70-vrchat-2026.2.30300-1365-r6",
+                "capability-vrchat-2026.2.30300-1365-r7",
               controllerQuarantinePath ==
                 "/usr/local/libexec/playcover-vrchat-memory-policy/.controller.pcvr-install",
               runnerQuarantinePath ==

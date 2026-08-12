@@ -128,11 +128,11 @@ fi
 
 case "$controller_present:$runner_present:$attestation_present:$installed_receipt:$controller_sha:$runner_sha" in
     0:0:0:absent::)
-        print -- "Installing the reviewed r6 controller package into an absent state."
+        print -- "Installing the reviewed capability-gated controller package into an absent state."
         ;;
     1:1:1:current:"$current_controller_sha":"$current_runner_sha"|\
     1:1:1:absent:"$current_controller_sha":"$current_runner_sha")
-        print -- "Repairing the exact reviewed r6 controller package."
+        print -- "Repairing the exact reviewed capability-gated controller package."
         ;;
     1:1:0:absent:"$r5_controller_sha":"$r5_runner_sha")
         keep_install_journal=1

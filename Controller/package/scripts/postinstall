@@ -49,5 +49,5 @@ if [[ -e "$controller_quarantine" || -L "$controller_quarantine" ]]; then
 fi
 verify_package_entries
 /bin/unlink "$install_journal"
-print -- "Verified the exact r6 controller, runner, and installation attestation."
+print -- "Verified the exact capability-gated controller, runner, and installation attestation."
 exit 0

@@ -14,7 +14,7 @@ source_files=(
 )
 build_dir="$script_dir/build"
 output="$build_dir/vrchat-memory-policy-controller"
-expected_sha=824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c
+expected_sha=24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73
 
 /bin/mkdir -p "$build_dir"
 temporary_dir=''

@@ -60,9 +60,12 @@ AssetBundle 加载路径正常工作的必要条件之一。这是当前兼容�
 `memorystatus_control` 接口，为精确的 VRChat 进程设置临时内存上限。
 底层使用 `MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES`，然后回读策略确认生效。
 
-它根据 `hw.memsize` 计算安全上限，检查 VRChat 和 macOS 版本，等待目标进程，
+它根据 `hw.memsize` 计算安全上限，检查 VRChat 身份和当前 arm64 主机能力，等待目标进程，
 回读策略并修复已知的 RunningBoard 重置。VRChat 退出后策略自动移除。任何身份、
 内存压力或策略不匹配都会安全停止，不会操作其他进程。
+
+macOS 的 build/XNU 字符串只作为测试记录，不再作为运行锁；真正的策略写入、回读、
+VRChat 身份和运行时映像检查仍然失败即停止。
 
 日志中的可用余量是动态值：选择的上限减去当前 footprint。controller 不伪造
 内存 API 返回值，不 Hook Unity，也不修改 Appdome 或 `libloader`；它只在游戏外
@@ -70,15 +73,15 @@ AssetBundle 加载路径正常工作的必要条件之一。这是当前兼容�
 
 ## 快速开始
 
-### 当前已验证环境
+### 当前测试基线
 
 - Apple silicon Mac
-- macOS 26.6 / build `25G70`
+- macOS 26.6 / build `25G70`（测试基线，不是运行锁）
 - PlayCover `3.1.0 (856)`
 - VRChat `2026.2.30300 (1365)`
 
-这些版本由当前 manifest 覆盖。其他版本会在新增并审阅对应兼容项前安全拒绝，
-不会尝试猜测或静默启动。
+PlayCover 和 VRChat 身份仍然严格匹配；arm64 主机会通过实时策略写入和回读检查，
+不会因为 macOS point release 的 build/XNU 字符串变化而直接拒绝。
 
 ### 首次启动
 

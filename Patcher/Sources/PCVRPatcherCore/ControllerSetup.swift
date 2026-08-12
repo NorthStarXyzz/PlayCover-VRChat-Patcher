@@ -269,7 +269,7 @@ public enum ControllerPackageReceiptState: Sendable, Equatable {
 public enum RootControllerInstallationVerifier {
     // These are the two exact local r6 runners that predate the current
     // provenance-compatible runner. Their controller and attestation are the
-    // current reviewed r6 identities; only the runner changed. They are
+    // current reviewed predecessor identities; only the runner changed. They are
     // accepted solely as a one-time upgrade path. No other unknown runner is
     // accepted here.
     private static let reviewedPreXattrFixR6RunnerSHA256 =
@@ -652,10 +652,10 @@ public enum RootControllerInstallationVerifier {
                receipt == .exact || receipt == .absent {
                 return .knownUpgradeRequired
             }
-            return .unknown("the installed r6 root artifacts are not exact")
+            return .unknown("the installed capability-gated root artifacts are not exact")
         }
         if receipt == .absent {
-            // Narrow postinstall crash window: exact r6 artifacts and
+            // Narrow postinstall crash window: exact capability-gated artifacts and
             // attestation committed, install journal removed, but Installer
             // did not publish its receipt. Reopening the exact package is the
             // only permitted repair; this is never considered ready.

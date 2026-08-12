@@ -19,13 +19,13 @@ uninstall_journal=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-pol
 install_journal=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.install
 operation_claim=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.operation
 
-current_controller_sha=824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c
-current_runner_sha=26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af
-current_attestation_sha=4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5
+current_controller_sha=24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73
+current_runner_sha=11f63f9acac7cce516de19b1ceb89a10ca8d28474deffb39269c5da93de20465
+current_attestation_sha=45b471725262b670ede72a398bc8b6c34b9ea21eac1859ad9e7c849248b66d9b
 install_journal_sha=9f55df52e95af5170c3de7451ef4805082d79ef69a4d615e0ed372eba9fadf00
-install_journal_contents=$'PCVR-INSTALL/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\npackageVersion=0.1.0\ncontrollerBuildID=25G70-vrchat-2026.2.30300-1365-r6\n'
+install_journal_contents=$'PCVR-INSTALL/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\npackageVersion=0.1.0\ncontrollerBuildID=capability-vrchat-2026.2.30300-1365-r7\n'
 operation_claim_sha=c68b37a41ecacd9c60f322dabe15ce1d7bbcff5a3dd9e9926ce014b9c74d13c3
-operation_claim_contents=$'PCVR-OPERATION-CLAIM/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\ncontrollerBuildID=25G70-vrchat-2026.2.30300-1365-r6\n'
+operation_claim_contents=$'PCVR-OPERATION-CLAIM/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\ncontrollerBuildID=capability-vrchat-2026.2.30300-1365-r7\n'
 operation_claim_temp=''
 operation_claim_fd=''
 fixed_operation_claim_fd=''
@@ -151,8 +151,12 @@ verify_package_entries() {
 
 require_supported_host() {
     (( EUID == 0 )) || fail "Installer scripts require root." 77
-    [[ $(/usr/bin/sw_vers -buildVersion) == 25G70 ]] || \
-        fail "This package supports only macOS build 25G70."
+    [[ $(/usr/bin/uname -m) == arm64 ]] || \
+        fail "This package requires an arm64 Mac."
+    # The controller performs live capability and policy readback checks.  Do
+    # not reject point releases merely because they have a new build/XNU
+    # string; the old exact build gate made the package unusable after a point
+    # release update.
     verify_directory /private '0:0:755:Directory:sunlnk,hidden'
     verify_directory /private/var '0:0:755:Directory:sunlnk'
     verify_directory /private/var/db '0:0:755:Directory:sunlnk'
@@ -469,7 +473,7 @@ require_inactive_after_quarantine() {
     done
 
     # Bind the lsof observations to the same exact identities before allowing
-    # Installer to publish payload bytes.  The r6 controller independently
+    # Installer to publish payload bytes.  The capability-gated controller independently
     # refuses to start while the install journal exists, closing the residual
     # script-interpreter window where an older runner no longer holds its own
     # source inode but has not yet attempted its fixed controller exec.

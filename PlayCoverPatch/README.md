@@ -108,7 +108,7 @@ requirement、audit-token/XPC peer 校验、Developer ID 签名、公证和实�
 固定 controller build ID：
 
 ```text
-25G70-vrchat-2026.2.30300-1365-r6
+capability-vrchat-2026.2.30300-1365-r7
 ```
 
 server 顺序：

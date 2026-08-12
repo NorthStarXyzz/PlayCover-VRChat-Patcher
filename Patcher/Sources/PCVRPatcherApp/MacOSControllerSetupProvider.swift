@@ -266,7 +266,7 @@ actor MacOSControllerSetupProvider: ControllerSetupProviding {
         _ requirement: ControllerPackageRequirement
     ) throws -> Bool {
         // The root-owned runner itself proves there is no active lease and
-        // performs the crash-recoverable r6 clean uninstall. No password is
+        // performs the crash-recoverable clean uninstall. No password is
         // read, passed as an argument, logged, or retained by this process.
         let beforeAuthorization = try RootControllerInstallationVerifier.inspect(
             requirement: requirement,

@@ -357,4 +357,4 @@ done
 /usr/bin/codesign --verify --strict \
     "$payload_tree/usr/local/libexec/playcover-vrchat-memory-policy/controller"
 
-print -- "Verified deterministic unsigned r6 component package: $package_file"
+print -- "Verified deterministic unsigned capability-gated component package: $package_file"

@@ -102,7 +102,7 @@ must independently verify that the server UID is root.
 The ASCII, newline-delimited protocol is:
 
 ```text
-PCVR/2 HELLO 25G70-vrchat-2026.2.30300-1365-r6
+PCVR/2 HELLO capability-vrchat-2026.2.30300-1365-r7
 PCVR/2 WAITING <selectedLimitMiB> <safeMaximumMiB>
 PCVR/2 TARGET_BOUND <pid>
 PCVR/2 LEASE_ACTIVE <pid> <selectedLimitMiB>
@@ -184,8 +184,9 @@ unreviewed paths, vnode mismatches, and enumeration errors fail immediately.
 
 ## Fail-closed safety
 
-- macOS build `25G70`, XNU `xnu-12377.161.13~4`, and reviewed identities are
-  mandatory.
+- The controller must run on arm64. The recorded macOS build/XNU values are test
+  metadata, not a point-release lock; reviewed VRChat identity and live policy
+  readback remain mandatory.
 - File descriptor metadata, process UUID/UID/PID/unique ID/start time,
   audit-token path, and readback policy must remain exact.
 - Only the known RunningBoard `-1/-1` reset is repaired. Unfamiliar policy,

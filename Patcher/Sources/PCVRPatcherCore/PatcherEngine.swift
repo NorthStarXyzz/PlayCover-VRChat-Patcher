@@ -284,7 +284,7 @@ public actor PatcherEngine {
             guard case .exact(let controllerEvidence) = controllerState,
                   controllerEvidence.matches(controllerRequirement) else {
                 throw PatcherError.controllerSetupFailed(
-                    "the exact r6 controller must be active before Remove"
+                    "the exact capability-gated controller must be active before Remove"
                 )
             }
             try requireReceipt(
@@ -774,7 +774,7 @@ public actor PatcherEngine {
             journal.controllerSetupReason = .verificationRequired
             try writeJournal(journal)
             throw PatcherError.controllerSetupFailed(
-                "Installer exited without an exact r6 postinstall proof"
+                "Installer exited without an exact postinstall proof"
             )
         }
         return evidence
@@ -1353,19 +1353,6 @@ public actor PatcherEngine {
     private func runtimeMismatches() throws -> [String] {
         let actual = try runtimeProvider.snapshot()
         var failures: [String] = []
-        if actual.macOSVersion != manifest.host.productVersion {
-            failures.append(
-                "macOS \(actual.macOSVersion), expected \(manifest.host.productVersion)"
-            )
-        }
-        if actual.macOSBuild != manifest.host.buildVersion {
-            failures.append(
-                "build \(actual.macOSBuild), expected \(manifest.host.buildVersion)"
-            )
-        }
-        if !actual.xnuVersion.contains(manifest.host.xnuVersion) {
-            failures.append("unexpected XNU")
-        }
         if actual.architecture != manifest.architecture {
             failures.append("architecture \(actual.architecture)")
         }

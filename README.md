@@ -64,10 +64,11 @@ macOS's XNU `memorystatus_control` interface to apply a temporary memory limit t
 the exact VRChat process. It uses
 `MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES`, then reads the policy back.
 
-It calculates the safe maximum from `hw.memsize`, verifies the supported VRChat
-bundle and macOS build, waits for the process, reads the policy back, and repairs
-known RunningBoard resets. When VRChat exits, the policy is removed. Any identity,
-pressure, or policy mismatch stops safely instead of touching another process.
+It calculates the safe maximum from `hw.memsize`, verifies the reviewed VRChat
+bundle and the current arm64 host capability, waits for the process, reads the
+policy back, and repairs known RunningBoard resets. When VRChat exits, the policy
+is removed. Any identity, pressure, or policy mismatch stops safely instead of
+touching another process. A macOS point-release build number is not a lock.
 
 The reported headroom is dynamic: selected limit minus current footprint. The
 controller does not fake a memory API result, hook Unity, or modify Appdome or
@@ -75,15 +76,16 @@ controller does not fake a memory API result, hook Unity, or modify Appdome or
 
 ## Quick start
 
-### Current supported environment
+### Tested environment
 
 - Apple silicon Mac
-- macOS 26.6 / build `25G70`
+- macOS 26.6 / build `25G70` (test baseline; not a runtime lock)
 - PlayCover `3.1.0 (856)`
 - VRChat `2026.2.30300 (1365)`
 
-These are the versions currently covered by the reviewed manifest. Other versions
-are rejected safely until a matching compatibility entry is reviewed.
+The PlayCover and VRChat identities remain exact. The host build/XNU values are
+recorded as test metadata; arm64 hosts use live policy and readback checks instead
+of being rejected for a different point-release build number.
 
 ### First launch
 

@@ -109,9 +109,9 @@
       "additionalProperties": false,
       "required": ["productVersion", "buildVersion", "xnuVersion"],
       "properties": {
-        "productVersion": { "const": "26.6" },
-        "buildVersion": { "const": "25G70" },
-        "xnuVersion": { "const": "xnu-12377.161.13~4" }
+        "productVersion": { "type": "string", "minLength": 1 },
+        "buildVersion": { "type": "string", "minLength": 1 },
+        "xnuVersion": { "type": "string", "minLength": 1 }
       }
     },
     "policy": {
@@ -233,7 +233,7 @@
         "identifier": { "const": "io.github.northstarxyzz.pcvrpatcher.memory-policy" },
         "version": { "const": "0.1.0" },
         "sha256": { "$ref": "#/$defs/sha256" },
-        "controllerBuildID": { "const": "25G70-vrchat-2026.2.30300-1365-r6" },
+        "controllerBuildID": { "const": "capability-vrchat-2026.2.30300-1365-r7" },
         "controllerQuarantinePath": {
           "const": "/usr/local/libexec/playcover-vrchat-memory-policy/.controller.pcvr-install"
         },

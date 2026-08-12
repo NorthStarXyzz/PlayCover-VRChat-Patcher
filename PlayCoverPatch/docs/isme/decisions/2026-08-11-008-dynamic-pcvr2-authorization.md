@@ -36,7 +36,7 @@ It never opens Terminal, constructs a shell command, reads a password, or calls
 tests. Any failure aborts before LaunchServices.
 
 After authorization, the client authenticates a root Unix-socket peer and
-requires PCVR/2 build `25G70-vrchat-2026.2.30300-1365-r6`. `WAITING` reports the
+requires PCVR/2 build `capability-vrchat-2026.2.30300-1365-r7`. `WAITING` reports the
 selected and safe MiB values. `LEASE_ACTIVE` and every `METRICS` line must use
 the selected limit and bound PID. Metrics carry one-decimal footprint/headroom,
 reapply count, and pressure. Client `PCVR/2 CANCEL` is legal only before

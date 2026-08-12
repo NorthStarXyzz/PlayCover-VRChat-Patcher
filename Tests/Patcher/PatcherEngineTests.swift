@@ -1536,8 +1536,21 @@ final class PatcherEngineTests: XCTestCase {
         guard case .unsupportedRuntime(let reasons) = try await engine.inspect().state else {
             return XCTFail("expected unsupported runtime")
         }
-        XCTAssertGreaterThanOrEqual(reasons.count, 5)
+        XCTAssertGreaterThanOrEqual(reasons.count, 2)
         XCTAssertFalse(FileManager.default.fileExists(atPath: support.path))
+    }
+
+    func testNewMacOSBuildIsNotRejectedByTestedHostMetadata() async throws {
+        let runtime = RuntimeSnapshot(
+            macOSVersion: "26.6.2",
+            macOSBuild: "25G82",
+            xnuVersion: "Darwin Kernel Version 25.6.0: xnu-12377.161.14~5",
+            architecture: "arm64",
+            physicalMemoryBytes: 24 * 1_073_741_824
+        )
+        let engine = try makeEngine(runtime: runtime)
+        let inspection = try await engine.inspect()
+        XCTAssertEqual(inspection.state, .readyToCreate)
     }
 
     func testSourceOnlyManifestCanInspectButCannotCreate() async throws {
@@ -2225,7 +2238,7 @@ final class PatcherEngineTests: XCTestCase {
             version: "0.1.0",
             sha256:
                 "dac659b8ad876000a547024da1606ab59ad3dd73655ce84e7674b1aec86d81df",
-            controllerBuildID: "25G70-vrchat-2026.2.30300-1365-r6",
+            controllerBuildID: "capability-vrchat-2026.2.30300-1365-r7",
             controllerQuarantinePath: controllerQuarantine.path,
             runnerQuarantinePath: runnerQuarantine.path,
             runner: artifact(runner, runnerData, "0555"),
@@ -2738,7 +2751,7 @@ private extension MachOAllowlistIdentity {
 
 private extension ControllerInstallationEvidence {
     static let fixture = ControllerInstallationEvidence(
-        controllerBuildID: "25G70-vrchat-2026.2.30300-1365-r6",
+        controllerBuildID: "capability-vrchat-2026.2.30300-1365-r7",
         packageIdentifier:
             "io.github.northstarxyzz.pcvrpatcher.memory-policy",
         packageVersion: "0.1.0",
@@ -2754,7 +2767,7 @@ private extension ControllerPackageRequirement {
         version: "0.1.0",
         sha256:
             "dac659b8ad876000a547024da1606ab59ad3dd73655ce84e7674b1aec86d81df",
-        controllerBuildID: "25G70-vrchat-2026.2.30300-1365-r6",
+        controllerBuildID: "capability-vrchat-2026.2.30300-1365-r7",
         controllerQuarantinePath:
             "/usr/local/libexec/playcover-vrchat-memory-policy/.controller.pcvr-install",
         runnerQuarantinePath:

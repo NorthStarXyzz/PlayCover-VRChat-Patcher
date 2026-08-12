@@ -4,13 +4,13 @@
     "relativePath": "Controller/PlayCoverVRChatMemoryPolicy.pkg",
     "identifier": "io.github.northstarxyzz.pcvrpatcher.memory-policy",
     "version": "0.1.0",
-    "sha256": "2296e1072c78574ac180672220ab9c651470d4e8cc09460fa075247b60b1f488",
-    "controllerBuildID": "25G70-vrchat-2026.2.30300-1365-r6",
+    "sha256": "804228286bee546a1e04b08ada2df76083a462a592e32b69c9882ab4ce66c131",
+    "controllerBuildID": "capability-vrchat-2026.2.30300-1365-r7",
     "controllerQuarantinePath": "/usr/local/libexec/playcover-vrchat-memory-policy/.controller.pcvr-install",
     "runnerQuarantinePath": "/usr/local/bin/.playcover-vrchat-memory-policy.pcvr-install",
     "runner": {
       "path": "/usr/local/bin/playcover-vrchat-memory-policy",
-      "sha256": "26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af",
+      "sha256": "11f63f9acac7cce516de19b1ceb89a10ca8d28474deffb39269c5da93de20465",
       "uid": 0,
       "gid": 0,
       "mode": "0555",
@@ -18,7 +18,7 @@
     },
     "controller": {
       "path": "/usr/local/libexec/playcover-vrchat-memory-policy/controller",
-      "sha256": "824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c",
+      "sha256": "24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73",
       "uid": 0,
       "gid": 0,
       "mode": "0500",
@@ -26,7 +26,7 @@
     },
     "attestation": {
       "path": "/usr/local/libexec/playcover-vrchat-memory-policy/installation.json",
-      "sha256": "4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5",
+      "sha256": "45b471725262b670ede72a398bc8b6c34b9ea21eac1859ad9e7c849248b66d9b",
       "uid": 0,
       "gid": 0,
       "mode": "0444",
@@ -82,5 +82,5 @@
     }
   ],
   "developmentSignaturePolicy": "unsigned-local-alpha",
-  "requiredMacOSBuild": "25G70"
+  "hostPolicy": "arm64-capability-check"
 }

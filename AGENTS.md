@@ -21,17 +21,18 @@ source-only DMG as a ready-to-install compatibility fix.
 - `Tests/` — Swift, controller, manifest, and PlayCover patch tests.
 - `Docs/` — development, architecture, release, and third-party notes.
 
-## Locked compatibility target
+## Compatibility baseline
 
-Do not expand support by guessing. The reviewed target is:
+The reviewed test baseline is:
 
 - Apple silicon arm64
-- macOS 26.6, build `25G70`
+- macOS 26.6, build `25G70` (metadata only; not a runtime lock)
 - PlayCover `3.1.0 (856)`
 - VRChat `2026.2.30300 (1365)`
 
-Add a compatibility manifest, identity evidence, and tests before changing
-these versions. Unsupported versions must fail closed.
+PlayCover/VRChat identities remain pinned. Host build/XNU strings are not used as
+an allowlist; the controller uses arm64 and live policy/readback/runtime-image
+checks, and fails closed when those checks fail.
 
 ## Required checks
 
@@ -61,9 +62,9 @@ target macOS build:
 /bin/zsh Scripts/package-alpha.sh --release-tag v0.1.0-alpha.N
 ```
 
-GitHub CI runs the source checks on non-target macOS runners with the package
-gate skipped. That does not change the runtime guard: the controller package
-still installs only on build `25G70`.
+GitHub CI may build on a different macOS point release. That does not weaken the
+runtime guard: package installation still requires arm64 and the controller
+performs its live identity and policy checks before maintaining a session.
 
 ## Patch and runtime rules
 

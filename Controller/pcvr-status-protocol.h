@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 #define PCVR_PROTOCOL_PREFIX "PCVR/2"
-#define PCVR_CONTROLLER_BUILD_ID "25G70-vrchat-2026.2.30300-1365-r6"
+#define PCVR_CONTROLLER_BUILD_ID "capability-vrchat-2026.2.30300-1365-r7"
 #define PCVR_RUNTIME_DIRECTORY \
     "/private/var/run/io.github.northstarxyzz.pcvrpatcher"
 #define PCVR_STATUS_SOCKET_PATH PCVR_RUNTIME_DIRECTORY "/session.sock"

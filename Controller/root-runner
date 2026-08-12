@@ -16,12 +16,12 @@ install_journal=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-polic
 operation_claim=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.operation
 receipt_id=io.github.northstarxyzz.pcvrpatcher.memory-policy
 receipt_version=0.1.0
-expected_controller_sha=824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c
+expected_controller_sha=24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73
 expected_attestation_sha=4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5
 expected_journal_sha=c66d1be68d75822cf6c9b91f47aaf54649c263d59c5a0562e21acc224cefaa5f
-journal_contents=$'PCVR-UNINSTALL/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\npackageVersion=0.1.0\ncontrollerBuildID=25G70-vrchat-2026.2.30300-1365-r6\n'
+journal_contents=$'PCVR-UNINSTALL/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\npackageVersion=0.1.0\ncontrollerBuildID=capability-vrchat-2026.2.30300-1365-r7\n'
 expected_operation_claim_sha=c68b37a41ecacd9c60f322dabe15ce1d7bbcff5a3dd9e9926ce014b9c74d13c3
-operation_claim_contents=$'PCVR-OPERATION-CLAIM/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\ncontrollerBuildID=25G70-vrchat-2026.2.30300-1365-r6\n'
+operation_claim_contents=$'PCVR-OPERATION-CLAIM/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\ncontrollerBuildID=capability-vrchat-2026.2.30300-1365-r7\n'
 journal_temp=''
 operation_claim_temp=''
 claim_fd=''

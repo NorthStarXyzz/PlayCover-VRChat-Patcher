@@ -398,7 +398,7 @@ def test_real_operation_claim_exclusion_and_recovery() -> None:
     claim_bytes = (
         "PCVR-OPERATION-CLAIM/1\n"
         "packageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\n"
-        "controllerBuildID=25G70-vrchat-2026.2.30300-1365-r6\n"
+        "controllerBuildID=capability-vrchat-2026.2.30300-1365-r7\n"
     ).encode()
     with tempfile.TemporaryDirectory(prefix="pcvr-operation-claim-") as temporary:
         root = pathlib.Path(temporary)

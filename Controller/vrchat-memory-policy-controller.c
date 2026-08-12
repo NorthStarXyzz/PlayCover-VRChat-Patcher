@@ -114,8 +114,6 @@ enum {
     0x8a, 0x1d, 0x23, 0x7c, 0xe5, 0xd6, 0x4c, 0x42
 #endif
 
-static const char *const expected_os_build = "25G70";
-static const char *const expected_kernel_fragment = "xnu-12377.161.13~4";
 static const int target_wait_seconds = 300;
 static const uint8_t expected_executable_uuid[16] = {
     POLICY_TARGET_UUID_BYTES
@@ -167,23 +165,21 @@ static int read_sysctl_string(const char *name, char *buffer, size_t capacity) {
     return 0;
 }
 
-static int verify_kernel_version(void) {
+static int verify_host_capability(void) {
+    int arm64_capable = 0;
+    size_t arm64_size = sizeof(arm64_capable);
     char os_build[64] = {0};
     char kernel_version[512] = {0};
-    if (read_sysctl_string("kern.osversion", os_build, sizeof(os_build)) != 0 ||
+    if (sysctlbyname("hw.optional.arm64", &arm64_capable, &arm64_size,
+                     NULL, 0) != 0 || arm64_capable != 1 ||
+        read_sysctl_string("kern.osversion", os_build, sizeof(os_build)) != 0 ||
         read_sysctl_string("kern.version", kernel_version,
                            sizeof(kernel_version)) != 0) {
-        perror("sysctlbyname");
+        fprintf(stderr, "Unable to verify arm64 host capabilities.\n");
         return -1;
     }
-    if (strcmp(os_build, expected_os_build) != 0 ||
-        strstr(kernel_version, expected_kernel_fragment) == NULL) {
-        fprintf(stderr,
-                "Unsupported kernel/build. Expected %s and %s; found %s and:\n%s\n",
-                expected_os_build, expected_kernel_fragment, os_build,
-                kernel_version);
-        return -1;
-    }
+    fprintf(stderr, "Verified arm64 host; build %s and kernel:\n%s\n",
+            os_build, kernel_version);
     return 0;
 }
 
@@ -902,7 +898,7 @@ int main(int argc, char **argv) {
         return 64;
     }
     /* The package journal is created before an old runner is quarantined and
-     * remains until the complete r6 payload is verified.  This early gate
+     * remains until the complete capability-gated payload is verified.  This early gate
      * closes the predecessor-runner race: even a script process that survives
      * quarantine cannot start the newly published controller mid-transaction. */
     if (pcvr_path_must_be_absent(PCVR_INSTALL_JOURNAL_PATH) != 0) {
@@ -952,7 +948,7 @@ int main(int argc, char **argv) {
         return 78;
     }
 
-    if (verify_kernel_version() != 0) {
+    if (verify_host_capability() != 0) {
         return 78;
     }
 
@@ -962,7 +958,7 @@ int main(int argc, char **argv) {
     }
     if (geteuid() != 0) {
         fprintf(stderr,
-                "Kernel/build and target hash verified. Root is required because "
+                "Host capability and target identity verified. Root is required because "
                 "XNU protects memorystatus_control.\n");
         return 77;
     }
@@ -1011,10 +1007,10 @@ int main(int argc, char **argv) {
     }
     fprintf(stderr,
             "controller_pid=%d ready=1\n"
-            "Verified build %s and target composite identity. Selected %u GiB "
+            "Verified host capability and target composite identity. Selected %u GiB "
             "of a %u GiB "
             "safe maximum. Waiting up to %d seconds for:\n%s\n",
-            getpid(), expected_os_build, policy.selected_gib,
+            getpid(), policy.selected_gib,
             policy.safe_maximum_gib, target_wait_seconds, target_path);
 
     const int polls_per_second = 200;

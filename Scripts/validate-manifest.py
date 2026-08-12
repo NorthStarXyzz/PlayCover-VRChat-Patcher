@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the version-locked PCVR schema-2 compatibility manifest."""
+"""Validate the reviewed PCVR schema-2 compatibility manifest."""
 
 from __future__ import annotations
 
@@ -198,12 +198,9 @@ def main() -> None:
         value.get("host"), "host",
         {"productVersion", "buildVersion", "xnuVersion"},
     )
-    if host != {
-        "productVersion": "26.6",
-        "buildVersion": "25G70",
-        "xnuVersion": "xnu-12377.161.13~4",
-    }:
-        fail("unexpected host gate")
+    if any(not isinstance(host.get(key), str) or not host[key]
+           for key in ("productVersion", "buildVersion", "xnuVersion")):
+        fail("host metadata must contain non-empty strings")
 
     policy = require_object(
         value.get("policy"), "policy",

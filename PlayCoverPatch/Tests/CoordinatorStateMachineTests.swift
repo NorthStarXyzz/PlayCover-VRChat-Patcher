@@ -275,8 +275,8 @@ private struct CoordinatorStateMachineTests {
         )
         try require(
             VRChatMemoryPolicyManifest.controllerBuildID
-                == "25G70-vrchat-2026.2.30300-1365-r6",
-            "the client must accept only the reviewed r6 controller"
+                == "capability-vrchat-2026.2.30300-1365-r7",
+            "the client must accept only the reviewed capability-gated controller"
         )
     }
 
@@ -410,7 +410,7 @@ private struct CoordinatorStateMachineTests {
     private static func testPCVR2Parser() throws {
         try require(
             try PCVRLineProtocol.parseHello(
-                "PCVR/2 HELLO 25G70-vrchat-2026.2.30300-1365-r6"
+                "PCVR/2 HELLO capability-vrchat-2026.2.30300-1365-r7"
             ) == VRChatMemoryPolicyManifest.controllerBuildID,
             "PCVR/2 HELLO must parse"
         )

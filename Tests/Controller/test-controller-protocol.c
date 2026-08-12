@@ -38,7 +38,7 @@ static void test_wire_lines(void) {
     char hello[PCVR_STATUS_MAX_LINE] = {0};
     assert(pcvr_format_hello(hello) == 0);
     assert(strcmp(hello,
-                  "PCVR/2 HELLO 25G70-vrchat-2026.2.30300-1365-r6\n") == 0);
+                  "PCVR/2 HELLO capability-vrchat-2026.2.30300-1365-r7\n") == 0);
 
     assert(pcvr_status_publish_waiting(&server, 18432, 18432) == 0);
     expect_line(sockets[1], "PCVR/2 WAITING 18432 18432\n");
