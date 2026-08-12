@@ -294,13 +294,43 @@ expected_operation_claim_sha=$(/usr/bin/python3 -c \
     'import json,sys; print(json.load(open(sys.argv[1]))["controllerPackage"]["operationClaim"]["sha256"])' \
     "$manifest")
 /usr/bin/python3 - "$manifest" <<'PY'
+import hashlib
 import json
 import sys
 
-claim = json.load(open(sys.argv[1]))["controllerPackage"]["operationClaim"]
+package = json.load(open(sys.argv[1]))["controllerPackage"]
+claim = package["operationClaim"]
+build_id = package["controllerBuildID"]
+canonical = {
+    "installJournal": (
+        "PCVR-INSTALL/1\n"
+        "packageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\n"
+        "packageVersion=0.1.0\n"
+        f"controllerBuildID={build_id}\n"
+    ),
+    "uninstallJournal": (
+        "PCVR-UNINSTALL/1\n"
+        "packageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\n"
+        "packageVersion=0.1.0\n"
+        f"controllerBuildID={build_id}\n"
+    ),
+    "operationClaim": (
+        "PCVR-OPERATION-CLAIM/1\n"
+        "packageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\n"
+        f"controllerBuildID={build_id}\n"
+    ),
+}
+for key, contents in canonical.items():
+    expected = hashlib.sha256(contents.encode("utf-8")).hexdigest()
+    actual = package[key]["sha256"]
+    if actual != expected:
+        raise SystemExit(
+            f"{key} hash does not match its canonical {build_id} contents: "
+            f"expected {expected}, found {actual}"
+        )
 expected = {
     "path": "/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.operation",
-    "sha256": "c68b37a41ecacd9c60f322dabe15ce1d7bbcff5a3dd9e9926ce014b9c74d13c3",
+    "sha256": "7fbc5571dfedc9073d71607562a97c1ea0c0435e6783f1818dcdcc40e8f23eed",
     "uid": 0,
     "gid": 0,
     "mode": "0400",

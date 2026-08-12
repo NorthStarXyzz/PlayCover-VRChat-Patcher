@@ -2816,21 +2816,21 @@ private extension ControllerPackageRequirement {
             path:
                 "/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.install",
             sha256:
-                "9f55df52e95af5170c3de7451ef4805082d79ef69a4d615e0ed372eba9fadf00",
+                "2c4dcac138decf2d452fa661cf2542dc145451e01905cd7c05821fd0aec9dcd1",
             mode: "0400"
         ),
         uninstallJournal: RootArtifactRequirement(
             path:
                 "/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.uninstall",
             sha256:
-                "c66d1be68d75822cf6c9b91f47aaf54649c263d59c5a0562e21acc224cefaa5f",
+                "81774131768fce7378e740fc2bfaeb50620c2121ae4f56a7539cb5cd69d33b13",
             mode: "0400"
         ),
         operationClaim: RootArtifactRequirement(
             path:
                 "/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.operation",
             sha256:
-                "c68b37a41ecacd9c60f322dabe15ce1d7bbcff5a3dd9e9926ce014b9c74d13c3",
+                "7fbc5571dfedc9073d71607562a97c1ea0c0435e6783f1818dcdcc40e8f23eed",
             mode: "0400"
         ),
         timeoutSeconds: 900,
