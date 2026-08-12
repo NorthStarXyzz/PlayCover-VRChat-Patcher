@@ -737,6 +737,29 @@ final class PatcherEngineTests: XCTestCase {
         }
     }
 
+    func testInstalledR6PairIsOnlyAnUpgradePredecessor() {
+        let runner = "26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af"
+        let attestation = "4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5"
+        XCTAssertTrue(
+            RootControllerInstallationVerifier.isReviewedInstalledR6Pair(
+                runnerSHA256: runner,
+                attestationSHA256: attestation
+            )
+        )
+        XCTAssertFalse(
+            RootControllerInstallationVerifier.isReviewedInstalledR6Pair(
+                runnerSHA256: runner,
+                attestationSHA256: String(repeating: "0", count: 64)
+            )
+        )
+        XCTAssertFalse(
+            RootControllerInstallationVerifier.isReviewedInstalledR6Pair(
+                runnerSHA256: String(repeating: "0", count: 64),
+                attestationSHA256: attestation
+            )
+        )
+    }
+
     func testRootUninstallRecognizesOnlyReviewedOrderedSubsets() throws {
         let fixture = try makeRootControllerStateFixture()
         try fixture.uninstallJournalData.write(to: fixture.uninstallJournal)

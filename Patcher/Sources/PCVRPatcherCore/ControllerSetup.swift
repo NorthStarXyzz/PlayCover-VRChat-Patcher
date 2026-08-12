@@ -267,11 +267,13 @@ public enum ControllerPackageReceiptState: Sendable, Equatable {
 /// and relies on the exact, root-owned attestation for its reviewed hash. The
 /// readable runner and attestation are both hashed directly.
 public enum RootControllerInstallationVerifier {
-    // These are the two exact local r6 runners that predate the current
-    // provenance-compatible runner. Their controller and attestation are the
-    // current reviewed predecessor identities; only the runner changed. They are
-    // accepted solely as a one-time upgrade path. No other unknown runner is
+    // These are reviewed predecessor identities. They are accepted solely as
+    // one-time upgrade paths; no other unknown runner or attestation is
     // accepted here.
+    private static let installedR6RunnerSHA256 =
+        "26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af"
+    private static let installedR6AttestationSHA256 =
+        "4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5"
     private static let reviewedPreXattrFixR6RunnerSHA256 =
         "5a712cf92c7c54cf70f554b0804bab28923edf911db82edd1b65b7e010998a87"
     private static let reviewedPreProvenanceFixR6RunnerSHA256 =
@@ -284,6 +286,14 @@ public enum RootControllerInstallationVerifier {
         ].contains { predecessor in
             sha256.caseInsensitiveCompare(predecessor) == .orderedSame
         }
+    }
+
+    static func isReviewedInstalledR6Pair(
+        runnerSHA256: String,
+        attestationSHA256: String
+    ) -> Bool {
+        runnerSHA256.caseInsensitiveCompare(installedR6RunnerSHA256) == .orderedSame &&
+            attestationSHA256.caseInsensitiveCompare(installedR6AttestationSHA256) == .orderedSame
     }
 
     public static func inspect(
@@ -646,6 +656,12 @@ public enum RootControllerInstallationVerifier {
             requirement.attestation.sha256
         ) == .orderedSame
         guard runnerMatches, attestationMatches else {
+            if Self.isReviewedInstalledR6Pair(
+                runnerSHA256: runnerHash,
+                attestationSHA256: attestationHash
+            ), receipt == .exact || receipt == .absent {
+                return .knownUpgradeRequired
+            }
             if !runnerMatches,
                attestationMatches,
                Self.isReviewedPredecessorRunner(runnerHash),
