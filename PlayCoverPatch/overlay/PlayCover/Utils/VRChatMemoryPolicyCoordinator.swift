@@ -29,7 +29,7 @@ enum VRChatMemoryPolicyManifest {
         "/private/var/run/io.github.northstarxyzz.pcvrpatcher/session.sock"
     static let runnerPath = "/usr/local/bin/playcover-vrchat-memory-policy"
     static let reviewedRunnerSHA256 =
-        "26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af"
+        "11f63f9acac7cce516de19b1ceb89a10ca8d28474deffb39269c5da93de20465"
     static let controllerBuildID = "capability-vrchat-2026.2.30300-1365-r7"
     static let expectedShortVersion = "2026.2.30300"
     static let expectedBuildVersion = "1365"
