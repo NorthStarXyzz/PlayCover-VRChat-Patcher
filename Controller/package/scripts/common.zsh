@@ -44,6 +44,13 @@ r6_previous_runner_sha=5a712cf92c7c54cf70f554b0804bab28923edf911db82edd1b65b7e01
 # operation-claim temporaries. It is a reviewed, one-time upgrade predecessor.
 r6_pre_provenance_controller_sha=b8c28482f675761b8c6ae3422c87b01f58c1356ae56b5556dec2d1eec825e67f
 r6_pre_provenance_runner_sha=039047ea409a4cd5b27f142b657f239ec99bbed6e2ee1a866bf031a81973f558
+# The r6 package actually installed on this machine used this exact reviewed
+# controller/runner/attestation trio. Keep it as a narrow one-time upgrade
+# predecessor so an interrupted repair can resume instead of being classified
+# as an unknown mixed installation.
+r6_installed_controller_sha=824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c
+r6_installed_runner_sha=26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af
+r6_installed_attestation_sha=4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5
 
 fail() {
     print -u2 -- "$1"
@@ -384,13 +391,16 @@ classify_journaled_install_state() {
         case "$quarantined_controller_sha:$quarantined_runner_sha" in
             "$r5_controller_sha:$r5_runner_sha"|"$r3_controller_sha:$r3_runner_sha"|\
             "$r6_previous_controller_sha:$r6_previous_runner_sha"|\
-            "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha") ;;
+            "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha"|\
+            "$r6_installed_controller_sha:$r6_installed_runner_sha") ;;
             *) print -- reject; return ;;
         esac
         if [[ "$quarantined_controller_sha:$quarantined_runner_sha" == \
               "$r6_previous_controller_sha:$r6_previous_runner_sha" || \
               "$quarantined_controller_sha:$quarantined_runner_sha" == \
-              "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha" ]]; then
+              "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha" || \
+              "$quarantined_controller_sha:$quarantined_runner_sha" == \
+              "$r6_installed_controller_sha:$r6_installed_runner_sha" ]]; then
             case "$final_state" in
                 0:0:1:absent::|0:0:1:current::)
                     print -- resume
@@ -420,13 +430,16 @@ classify_journaled_install_state() {
             "$r6_previous_controller_sha:$r6_previous_runner_sha:0:1:1:current::${r6_previous_runner_sha}"|\
             "$r6_previous_controller_sha:$r6_previous_runner_sha:0:1:0:absent::${r6_previous_runner_sha}"|\
             "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha:0:1:1:current::${r6_pre_provenance_runner_sha}"|\
-            "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha:0:1:0:absent::${r6_pre_provenance_runner_sha}")
+            "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha:0:1:0:absent::${r6_pre_provenance_runner_sha}"|\
+            "$r6_installed_controller_sha:$r6_installed_runner_sha:0:1:1:current::${r6_installed_runner_sha}"|\
+            "$r6_installed_controller_sha:$r6_installed_runner_sha:0:1:0:absent::${r6_installed_runner_sha}")
                 print -- complete-quarantine-r6-previous
                 ;;
             "$r5_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
             "$r3_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
             "$r6_previous_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
-            "$r6_pre_provenance_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}")
+            "$r6_pre_provenance_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
+            "$r6_installed_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}")
                 print -- resume
                 ;;
             *) print -- reject ;;
@@ -446,8 +459,14 @@ classify_journaled_install_state() {
         1:1:0:absent:"$r6_previous_controller_sha":"$r6_previous_runner_sha"|\
         1:1:1:current:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha"|\
         1:1:1:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha"|\
-        1:1:0:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha")
-            print -- quarantine-r6-previous
+        1:1:0:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha"|\
+        1:1:1:current:"$r6_installed_controller_sha":"$r6_installed_runner_sha"|\
+        1:1:1:absent:"$r6_installed_controller_sha":"$r6_installed_runner_sha")
+            if [[ "$controller_sha" == "$r6_installed_controller_sha" ]]; then
+                print -- quarantine-r6-installed
+            else
+                print -- quarantine-r6-previous
+            fi
             ;;
         0:0:0:absent::|\
         0:1:0:absent::"$current_runner_sha"|\
@@ -496,7 +515,8 @@ require_inactive_after_quarantine() {
 verify_predecessor_controller() {
     verify_file_metadata "$1" 500
     case $(sha256 "$1") in
-        "$r5_controller_sha"|"$r3_controller_sha"|"$r6_previous_controller_sha") ;;
+        "$r5_controller_sha"|"$r3_controller_sha"|"$r6_previous_controller_sha"|\
+        "$r6_installed_controller_sha") ;;
         *) fail "Unknown predecessor controller quarantine." ;;
     esac
     /usr/bin/codesign --verify --strict "$1"
@@ -506,7 +526,7 @@ verify_predecessor_runner() {
     verify_file_metadata "$1" 555
     case $(sha256 "$1") in
         "$r5_runner_sha"|"$r3_runner_sha"|"$r6_previous_runner_sha"|\
-        "$r6_pre_provenance_runner_sha") ;;
+        "$r6_pre_provenance_runner_sha"|"$r6_installed_runner_sha") ;;
         *) fail "Unknown predecessor runner quarantine." ;;
     esac
 }

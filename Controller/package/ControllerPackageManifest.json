@@ -4,7 +4,7 @@
     "relativePath": "Controller/PlayCoverVRChatMemoryPolicy.pkg",
     "identifier": "io.github.northstarxyzz.pcvrpatcher.memory-policy",
     "version": "0.1.0",
-    "sha256": "71f89e9fff27ed670019ad92b1cf23f1dbc932a8d34cacf08165ab2534b635d1",
+    "sha256": "4a15dd16931856b382fb25e6c0f68f5bf3bcbe3a6bf5f15d1e17cc4d4c270d8b",
     "controllerBuildID": "capability-vrchat-2026.2.30300-1365-r7",
     "controllerQuarantinePath": "/usr/local/libexec/playcover-vrchat-memory-policy/.controller.pcvr-install",
     "runnerQuarantinePath": "/usr/local/bin/.playcover-vrchat-memory-policy.pcvr-install",

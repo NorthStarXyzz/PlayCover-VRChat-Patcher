@@ -33,6 +33,8 @@ PREDECESSORS = {
 }
 R5_C, R5_R = PREDECESSORS["r5"]
 R3_C, R3_R = PREDECESSORS["observed-r3"]
+R6_INSTALLED_C = "824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c"
+R6_INSTALLED_R = "26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af"
 
 
 def expected_install_action(state: tuple[str, ...]) -> str:
@@ -143,6 +145,25 @@ def test_real_shell_classifier() -> None:
         check=True,
     )
     assert new_journal_result.stdout.splitlines() == new_journal_expected
+
+
+def test_installed_r6_pair_is_a_narrow_upgrade_predecessor() -> None:
+    command = (
+        f"source {shlex.quote(str(COMMON))}\n"
+        "classify_journaled_install_state "
+        f"1 1 1 current {R6_INSTALLED_C} {R6_INSTALLED_R} 0 0 '' ''\n"
+    )
+    result = subprocess.run(
+        ["/bin/zsh", "-f"],
+        input=command,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert result.stdout.strip() == "quarantine-r6-installed"
+    common_text = COMMON.read_text()
+    assert R6_INSTALLED_C in common_text
+    assert R6_INSTALLED_R in common_text
 
 
 def uninstall_recovery_accepts(
@@ -473,6 +494,7 @@ def test_real_operation_claim_exclusion_and_recovery() -> None:
 
 def main() -> None:
     test_real_shell_classifier()
+    test_installed_r6_pair_is_a_narrow_upgrade_predecessor()
     test_uninstall_crash_prefixes_and_closed_table()
     test_transition_source_order_and_gates()
     test_real_directory_metadata_acl_and_flag_gates()

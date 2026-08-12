@@ -47,6 +47,7 @@ installed_receipt=$(receipt_state)
 controller_present=0
 runner_present=0
 attestation_present=0
+attestation_sha=''
 quarantined_controller_present=0
 quarantined_runner_present=0
 controller_sha=''
@@ -70,7 +71,12 @@ if [[ -e "$runner" || -L "$runner" ]]; then
     runner_present=1
 fi
 if [[ -e "$attestation" || -L "$attestation" ]]; then
-    verify_file "$attestation" 444 "$current_attestation_sha"
+    verify_file_metadata "$attestation" 444
+    attestation_sha=$(sha256 "$attestation")
+    case "$attestation_sha" in
+        "$current_attestation_sha"|"$r6_installed_attestation_sha") ;;
+        *) fail "Unknown controller attestation: $attestation" ;;
+    esac
     attestation_present=1
 fi
 if [[ -e "$controller_quarantine" || -L "$controller_quarantine" ]]; then
@@ -91,6 +97,14 @@ if (( install_journal_was_new )); then
         fail "A quarantine object without its original install journal is untrusted."
 fi
 
+if (( attestation_present )); then
+    case "$attestation_sha:$controller_sha:$runner_sha" in
+        "$current_attestation_sha:$current_controller_sha:$current_runner_sha"|\
+        "$r6_installed_attestation_sha:$r6_installed_controller_sha:$r6_installed_runner_sha") ;;
+        *) fail "Refusing a mixed controller attestation and executable pair." ;;
+    esac
+fi
+
 if (( ! install_journal_was_new )); then
     [[ "$installed_receipt" == absent || "$installed_receipt" == current ]] || \
         fail "Interrupted install has an unknown receipt state."
@@ -108,6 +122,9 @@ if (( ! install_journal_was_new )); then
             ;;
         quarantine-r6-previous)
             quarantine_predecessor_pair "$r6_previous_controller_sha" "$r6_previous_runner_sha"
+            ;;
+        quarantine-r6-installed)
+            quarantine_predecessor_pair "$r6_installed_controller_sha" "$r6_installed_runner_sha"
             ;;
         complete-quarantine-r5|complete-quarantine-r3|complete-quarantine-r6-previous)
             verify_owned_install_transition
@@ -144,6 +161,8 @@ case "$controller_present:$runner_present:$attestation_present:$installed_receip
         quarantine_predecessor_pair "$r3_controller_sha" "$r3_runner_sha"
         print -- "Upgrading the explicitly reviewed observed-r3 controller pair."
         ;;
+    1:1:1:current:"$r6_installed_controller_sha":"$r6_installed_runner_sha"|\
+    1:1:1:absent:"$r6_installed_controller_sha":"$r6_installed_runner_sha"|\
     1:1:1:current:"$r6_previous_controller_sha":"$r6_previous_runner_sha"|\
     1:1:1:absent:"$r6_previous_controller_sha":"$r6_previous_runner_sha"|\
     1:1:0:absent:"$r6_previous_controller_sha":"$r6_previous_runner_sha"|\
@@ -151,7 +170,11 @@ case "$controller_present:$runner_present:$attestation_present:$installed_receip
     1:1:1:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha"|\
     1:1:0:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha")
         keep_install_journal=1
-        if [[ "$runner_sha" == "$r6_pre_provenance_runner_sha" ]]; then
+        if [[ "$runner_sha" == "$r6_installed_runner_sha" ]]; then
+            keep_install_journal=1
+            quarantine_predecessor_pair "$r6_installed_controller_sha" "$r6_installed_runner_sha"
+            print -- "Upgrading the explicitly reviewed installed r6 controller pair."
+        elif [[ "$runner_sha" == "$r6_pre_provenance_runner_sha" ]]; then
             quarantine_predecessor_pair "$r6_pre_provenance_controller_sha" "$r6_pre_provenance_runner_sha"
             print -- "Upgrading the explicitly reviewed pre-provenance-fix r6 controller pair."
         else
