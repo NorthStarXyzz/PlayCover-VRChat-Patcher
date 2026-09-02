@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  A free, open-source compatibility patcher for supported PlayCover and VRChat
-  versions. The official PlayCover installation stays untouched.
+  A free, open-source compatibility patcher for PlayCover and VRChat.
+  The official PlayCover installation stays untouched.
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 
 - Keeps `/Applications/PlayCover.app` unchanged.
 - Creates `/Applications/PlayCover VRChat.app` with its own library.
-- Imports and verifies the supported VRChat installation.
+- Imports the VRChat installation without a VRChat version allowlist.
 - Starts VRChat with a transient memory soft limit.
 - Lets you use automatic 75% memory or choose a custom whole-GiB limit.
 
@@ -40,7 +40,7 @@ The patch engine, verification, and controller are original to this project.
 ## How it works
 
 1. The patcher copies the official PlayCover into a separate app and library.
-2. It imports a verified VRChat bundle without changing VRChat or injecting a dylib.
+2. It imports the VRChat bundle without changing VRChat or injecting a dylib.
 3. When VRChat starts, the patched PlayCover asks the authorized controller to wait
    for that exact VRChat process.
 4. The controller applies a non-fatal memory soft limit and repairs known
@@ -80,12 +80,14 @@ controller does not fake a memory API result, hook Unity, or modify Appdome or
 
 - Apple silicon Mac
 - macOS 26.6 / build `25G70` (test baseline; not a runtime lock)
-- PlayCover `3.1.0 (856)`
+- PlayCover `3.1.0 (856)` (test baseline)
 - VRChat `2026.2.30300 (1365)`
 
-The PlayCover and VRChat identities remain exact. The host build/XNU values are
-recorded as test metadata; arm64 hosts use live policy and readback checks instead
-of being rejected for a different point-release build number.
+The selected PlayCover source is checked for its bundle identity and safe arm64
+structure. Its version, executable hash, UUID and tree hash are not an allowlist,
+so compatible nightly builds can be used as the source/library anchor. The
+patched app itself still comes from the reviewed payload bundled with this tool.
+VRChat content is copied as-is.
 
 ### First launch
 
@@ -139,8 +141,8 @@ The original app and its library are not removed by Patch, Repair, or Remove.
 
 ## Limitations
 
-- This is a version-locked developer Alpha, not a general PlayCover release.
-- Unsupported PlayCover, VRChat, macOS, or architecture combinations stop safely.
+- This is a developer Alpha, not a general PlayCover release.
+- Foreign bundles, unsafe app structures, or unsupported architectures stop safely.
 - Do not use unreviewed CI artifacts or modified payloads.
 - A public signed and notarized release is not available yet.
 

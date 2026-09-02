@@ -189,6 +189,44 @@ final class PatcherEngineTests: XCTestCase {
         XCTAssertTrue(AppIdentity.isSHA256(actual.treeSHA256))
     }
 
+    func testPlayCoverNightlyVersionAndHashesAreAccepted() async throws {
+        // Nightlies keep PlayCover's bundle identity but change the build,
+        // executable digest and tree hash.  Those source details must not be
+        // an allowlist because the generated app comes from our reviewed
+        // payload and the selected app is only the source/library anchor.
+        try "nightly".write(
+            to: originalApp.appendingPathComponent("nightly-build"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let engine = try makeEngine()
+        let inspection = try await engine.inspect()
+        XCTAssertEqual(inspection.state, .readyToCreate)
+        let result = try await engine.createPatchedCopy()
+        XCTAssertEqual(result.inspection.state, .fullyPatched)
+    }
+
+    func testNonPlayCoverBundleIsStillRejected() async throws {
+        try "foreign-playcover".write(
+            to: originalApp.appendingPathComponent("marker"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let engine = try makeEngine()
+        guard case .unknownModification(let reason) =
+                try await engine.inspect().state else {
+            return XCTFail("a non-PlayCover bundle must remain rejected")
+        }
+        XCTAssertTrue(reason.contains("bundle identifier"))
+        await XCTAssertThrowsErrorAsync(try await engine.createPatchedCopy()) {
+            guard case PatcherError.identityMismatch = $0 else {
+                return XCTFail("unexpected \($0)")
+            }
+        }
+    }
+
     func testCreateAndRemoveKeepOriginalTreeUnchangedAndPreserveLibrary() async throws {
         let originalBefore = try AppTreeVerifier.treeSHA256(originalApp)
         let originalMetadataBefore = try SecureTreeAuditor.inspect(originalApp)
@@ -2391,6 +2429,11 @@ final class PatcherEngineTests: XCTestCase {
 private struct MarkerAppVerifier: TreeVerifying {
     func identity(of appURL: URL) throws -> AppIdentity {
         _ = try SecureTreeAuditor.inspect(appURL)
+        if FileManager.default.fileExists(
+            atPath: appURL.appendingPathComponent("nightly-build").path
+        ) {
+            return .nightlySourceFixture
+        }
         let marker = try String(
             contentsOf: appURL.appendingPathComponent("marker"),
             encoding: .utf8
@@ -2697,6 +2740,20 @@ private extension AppIdentity {
         treeSHA256: String(repeating: "d", count: 64),
         infoPlistSHA256: String(repeating: "1", count: 64),
         codeResourcesSHA256: String(repeating: "2", count: 64)
+    )
+
+    static let nightlySourceFixture = AppIdentity(
+        bundleIdentifier: "io.playcover.PlayCover",
+        shortVersion: "3.2.0-nightly",
+        buildVersion: "1014",
+        executableName: "PlayCover",
+        executableSHA256: String(repeating: "1", count: 64),
+        executableUUID: "11111111-1111-1111-1111-111111111111",
+        treeSHA256: String(repeating: "2", count: 64),
+        repository: "https://github.com/PlayCover/PlayCover.git",
+        commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        infoPlistSHA256: String(repeating: "3", count: 64),
+        codeResourcesSHA256: String(repeating: "4", count: 64)
     )
 }
 

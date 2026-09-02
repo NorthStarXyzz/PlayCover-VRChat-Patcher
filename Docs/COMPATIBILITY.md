@@ -1,10 +1,13 @@
 # Compatibility policy
 
-Compatibility is allowlisted rather than inferred. A schema-2 manifest is
-eligible only when all of these match:
+The bundled payload is allowlisted; the selected source app is validated by
+structure. A schema-2 manifest is eligible only when all of these match:
 
-- official PlayCover source commit, release version/build, Developer ID release
+- bundled patched PlayCover commit, release version/build, signing/resource
   identity, executable/resource hashes, UUID, and full tree;
+- selected source PlayCover bundle ID, executable name, safe arm64 structure,
+  and fixed source/library paths. Its build, executable hash, UUID and tree
+  hash are not an allowlist;
 - customized payload bundle ID `io.github.northstarxyzz.PlayCoverVRChat`, exact
   version/build, reviewed signature/notarization state, manifest, and full tree;
 - fixed official/customized app paths and distinct library roots;

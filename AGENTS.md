@@ -27,12 +27,15 @@ The reviewed test baseline is:
 
 - Apple silicon arm64
 - macOS 26.6, build `25G70` (metadata only; not a runtime lock)
-- PlayCover `3.1.0 (856)`
+- PlayCover `3.1.0 (856)` (test baseline)
 - VRChat `2026.2.30300 (1365)`
 
-PlayCover/VRChat identities remain pinned. Host build/XNU strings are not used as
-an allowlist; the controller uses arm64 and live policy/readback/runtime-image
-checks, and fails closed when those checks fail.
+The selected PlayCover source is checked for its bundle identity and safe arm64
+structure; its version, executable hash, UUID and tree hash are not an allowlist.
+The bundled patched payload and controller package remain exactly pinned. VRChat
+is copied as-is and is not content allowlisted. Host build/XNU strings are not
+used as an allowlist; the controller uses arm64 and live policy/readback checks,
+and fails closed when those checks fail.
 
 ## Required checks
 
