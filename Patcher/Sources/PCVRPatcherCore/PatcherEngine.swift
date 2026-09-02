@@ -484,10 +484,11 @@ public actor PatcherEngine {
         if isSymbolicLink(paths.originalApp) {
             return inspection(.unknownModification("the original app is a symlink"))
         }
-        let original = try verifier.identity(of: paths.originalApp)
-        if let mismatch = original.mismatch(from: manifest.playCover) {
+        do {
+            _ = try requireOriginalPlayCover()
+        } catch {
             return inspection(.unknownModification(
-                "the original PlayCover is not the reviewed build: \(mismatch)"
+                "the selected app is not a compatible PlayCover bundle: \(error.localizedDescription)"
             ))
         }
 
@@ -1476,12 +1477,31 @@ public actor PatcherEngine {
         guard nodeExists(paths.originalApp) else {
             throw PatcherError.targetMissing(paths.originalApp)
         }
-        try requireIdentity(
-            paths.originalApp,
-            expected: manifest.playCover,
-            label: "original PlayCover"
-        )
-        return try verifier.identity(of: paths.originalApp)
+        if isSymbolicLink(paths.originalApp) {
+            throw PatcherError.unknownModification(
+                "the original PlayCover app is a symlink"
+            )
+        }
+
+        // The selected app supplies the user's library and settings.  The
+        // patched app is copied from the reviewed payload bundled with this
+        // Patcher, so a nightly's source hash is not an allowlist.  Keep the
+        // structural identity checks that prevent a foreign bundle from being
+        // used as the PlayCover source anchor.
+        let actual = try verifier.identity(of: paths.originalApp)
+        guard actual.bundleIdentifier == manifest.playCover.bundleIdentifier else {
+            throw PatcherError.identityMismatch(
+                expected: "original PlayCover bundle \(manifest.playCover.bundleIdentifier)",
+                actual: "bundle identifier \(actual.bundleIdentifier)"
+            )
+        }
+        guard actual.executableName == manifest.playCover.executableName else {
+            throw PatcherError.identityMismatch(
+                expected: "original PlayCover executable \(manifest.playCover.executableName)",
+                actual: "executable \(actual.executableName)"
+            )
+        }
+        return actual
     }
 
     private func requirePayload() throws -> AppIdentity {
