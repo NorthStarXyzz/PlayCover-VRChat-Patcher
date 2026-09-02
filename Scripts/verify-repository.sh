@@ -21,18 +21,6 @@ controller_package_manifest=$repo_root/Controller/package/ControllerPackageManif
 controller_build_id=$(/usr/bin/python3 -c \
     'import json,sys; print(json.load(open(sys.argv[1]))["controllerBuildID"])' \
     "$runtime_stamp")
-main_normalized_sha=$(/usr/bin/python3 -c \
-    'import json,sys; print(json.load(open(sys.argv[1]))["vrChat"]["mainIdentity"]["normalizedUnsignedSHA256"])' \
-    "$manifest")
-main_loads_sha=$(/usr/bin/python3 -c \
-    'import json,sys; print(json.load(open(sys.argv[1]))["vrChat"]["mainIdentity"]["normalizedLoadCommandsSHA256"])' \
-    "$manifest")
-entitlements_sha=$(/usr/bin/python3 -c \
-    'import json,sys; print(json.load(open(sys.argv[1]))["vrChat"]["mainIdentity"]["normalizedEntitlementsSHA256"])' \
-    "$manifest")
-macho_allowlist_sha=$(/usr/bin/python3 -c \
-    'import json,sys; print(json.load(open(sys.argv[1]))["vrChat"]["machoAllowlist"]["digestSHA256"])' \
-    "$manifest")
 package_controller_sha=$(/usr/bin/python3 -c \
     'import json,sys; print(json.load(open(sys.argv[1]))["controllerPackage"]["controller"]["sha256"])' \
     "$controller_package_manifest")
@@ -59,16 +47,8 @@ if ! /usr/bin/grep -F -x -q \
        "$repo_root/Controller/pcvr-status-protocol.h" || \
    ! /usr/bin/grep -F -q \
        "static let controllerBuildID = \"$controller_build_id\"" \
-       "$repo_root/PlayCoverPatch/overlay/PlayCover/Utils/VRChatMemoryPolicyCoordinator.swift" || \
-   ! /usr/bin/grep -F -q "\"$main_normalized_sha\"" \
-       "$repo_root/Controller/pcvr-bundle-identity.h" || \
-   ! /usr/bin/grep -F -q "\"$main_loads_sha\"" \
-       "$repo_root/Controller/pcvr-bundle-identity.h" || \
-   ! /usr/bin/grep -F -q "\"$entitlements_sha\"" \
-       "$repo_root/Controller/pcvr-bundle-identity.h" || \
-   ! /usr/bin/grep -F -q "\"$macho_allowlist_sha\"" \
-       "$repo_root/Controller/pcvr-reviewed-macho-allowlist.h"; then
-    print -u2 -- "Compatibility stamp, coordinator, and controller constants differ."
+       "$repo_root/PlayCoverPatch/overlay/PlayCover/Utils/VRChatMemoryPolicyCoordinator.swift"; then
+    print -u2 -- "Controller build identity and coordinator constants differ."
     exit 79
 fi
 

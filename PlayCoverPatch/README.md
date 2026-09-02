@@ -26,21 +26,14 @@ PlayTools framework。
 ## VRChat 的只读边界
 
 普通 PlayCover IPA installer 会执行 Mach-O 转换、Info.plist 修改、注入和重签名，
-因此定制版一旦在普通 install/export 流程识别到 `com.vrchat.mobile` 就立即拒绝。
-VRChat 必须由 Patcher 事务导入为已经过受信 manifest 精确验证的兼容 app copy。
+因此定制版仍禁止在普通 install/export 流程改写 VRChat。VRChat 由 Patcher 复制到
+独立资料库，但不会按版本、签名、UUID、entitlements、Unity/Appdome 哈希或 Mach-O
+白名单检查；用户可以更新 VRChat 而无需等待补丁更新。
 
-每次 VRChat 启动都固定执行以下只读检查：
-
-- app URL 必须逐字节等于独立资料库中的
-  `~/Library/Containers/io.github.northstarxyzz.PlayCoverVRChat/Applications/com.vrchat.mobile.app`，
-  目录链和完整 bundle tree 都不能有 symlink；
-- bundle ID、版本 `2026.2.30300 (1365)`、主可执行文件和 canonical
-  entitlements digest 必须精确匹配；
-- Security.framework strict code-signature 校验必须成功；
-- 完整 bundle 必须恰好重现 46 个 reviewed thin-arm64 Mach-O 及
-  `PCVR-MACHO-ALLOWLIST/1` aggregate digest，不能多一个或少一个；
-- 主可执行文件的 UUID、normalized unsigned SHA-256 和 normalized load-command
-  SHA-256 必须精确匹配 reviewed composite identity。
+每次 VRChat 启动只执行操作安全检查：app URL 必须是独立资料库中的固定路径，目录链和
+可执行文件不能有 symlink 或不安全所有权/权限，controller 绑定精确路径和用户。复制
+完成后源树与目标树必须一致；这些检查用于防止路径混淆和复制损坏，不是 VRChat 内容
+兼容性门槛。
 
 只要检查表示需要修复，启动就 fail-closed。该分支永不调用 `sign()`、
 `Shell.signApp`、`Macho.convertMacho`、PlayTools inject/install 或任何 app-bundle
@@ -142,8 +135,8 @@ LaunchServices 返回后，定制 PlayCover 还会要求返回的 bundle URL、e
 6. `0006` 把上述过渡状态收敛为独立定制身份、只读 VRChat、无标准 fallback、
    PCVR/2 动态额度、系统授权 provider 与双语设置 UI。
 7. `0007` 为包含空格的定制 product name 修正 PlayTools codesign build-phase 路径。
-8. `0008` 把精确 reviewed bundle 身份、LaunchServices 返回进程和 controller
-   `TARGET_BOUND` 绑定，并加入双语 fail-closed 错误。
+8. `0008` 把固定目标路径、LaunchServices 返回进程和 controller `TARGET_BOUND`
+   绑定，并加入双语 fail-closed 错误。
 
 `overlay/Cartfile.resolved` 固定 PlayTools commit
 `f17b9211211fb4cf5652d4930ea82613ee3c92a5`。Xcode 26 的 PlayTools 兼容补丁与固定

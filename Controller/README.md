@@ -2,7 +2,7 @@
 
 This directory contains the fixed-purpose root controller used by PlayCover
 VRChat Patcher. It does not modify VRChat or inject code; it applies one
-transient, non-fatal XNU memory policy to one exact, reviewed task.
+transient, non-fatal XNU memory policy to one exact task path.
 
 ## Policy contract
 
@@ -22,12 +22,11 @@ system memory.
 The write uses XNU `memorystatus_control` with
 `MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES`, followed by a policy readback.
 
-On the locked VRChat build, the T5/T6 comparison found that non-zero memory
-semantics were necessary for the observed remote avatar/model AssetBundle path.
-The controller therefore applies a real XNU policy outside the game; it does not
-fabricate an API result, hook Unity, or modify Appdome or `libloader`. Reported
-headroom is the selected limit minus the current footprint and naturally falls
-as the process grows.
+The non-zero policy addresses the `0 MB` memory report that can prevent remote
+avatar and image resources from loading. The controller applies a real XNU
+policy outside the game; it does not fabricate an API result, hook Unity, or
+modify Appdome or `libloader`. Reported headroom is the selected limit minus the
+current footprint and naturally falls as the process grows.
 
 Target discovery waits at most 300 seconds. The console user's home comes only
 from `/dev/console` plus `getpwuid_r`; no caller path or PID is accepted. The
@@ -49,13 +48,11 @@ zsh Tests/Controller/run-tests.sh
 zsh Controller/build.sh
 ```
 
-Tests use fake console-user/status backends, synthetic Mach-O fixtures,
-sanitizers, strict compiler warnings, CLI rejection canaries, runtime-region
-simulation, public `libproc` enumeration, unsafe-metadata fixtures,
-exhaustive package crash-state tables, deterministic double builds, and
-Installer-package hash-chain checks. When
-`PCVR_TEST_REVIEWED_EXECUTABLE` names the reviewed source executable, the test
-also regenerates the complete code allowlist and compares it byte-for-byte.
+Tests use fake console-user/status backends, sanitizers, strict compiler
+warnings, CLI rejection canaries, unsafe-metadata fixtures, exhaustive package
+crash-state tables, deterministic double builds, and Installer-package
+hash-chain checks. No VRChat binary allowlist or content fixture is generated
+or required.
 Tests do not invoke `sudo`, VRChat, or `memorystatus_control`.
 
 The exact reviewed artifact hashes are generated from and pinned by
@@ -117,76 +114,20 @@ client command is exact `PCVR/2 CANCEL`, accepted only in WAITING. Unknown,
 combined, oversized, path-bearing, PID-bearing, or limit-bearing messages are
 rejected. UI disconnects do not weaken guardian or controller safety.
 
-## Cross-user executable-code identity gate
+## Target safety
 
-The controller does not trust the machine-specific full hash of an ad-hoc
-signature. Instead, the generated reviewed allowlist binds all 46 thin arm64
-Mach-O files in VRChat 2026.2.30300 (1365), including the main executable,
-every bundled framework, Appdome `libloader`, Python extension frameworks, and
-the notification extension. Each entry contains its exact relative path,
-Mach-O UUID, normalized unsigned SHA-256, and normalized load-command SHA-256.
-An extra, missing, duplicate, fat, symlinked, or mismatching Mach-O fails the
-preflight.
+The controller does not inspect VRChat's version, signature, UUID, entitlements,
+framework hashes, or Mach-O inventory. It accepts updates without requiring a
+new compatibility entry.
 
-The canonical allowlist SHA-256 is
-`60df094badbe3fb9e8f051f07d2a38a54cfb7bd592c3cf62a69e355050ec5109`.
-Canonical bytes begin `PCVR-MACHO-ALLOWLIST/1\n`; entries sort by raw UTF-8
-relative path and use exactly:
-
-```text
-M <pathByteCount> <relativePath> <lowercaseUUIDHex32> <normalizedUnsignedSHA64> <normalizedLoadsSHA64>\n
-```
-
-The main entry remains UUID `41CADB30-CCEF-3B6C-8A1D-237CE5D64C42`,
-normalized unsigned SHA-256
-`cd6749e212d1ffed0e48a85cbd4d803e419eac8634fa1dcd62e25ea153e5bec3`,
-and normalized load-command SHA-256
-`664266000f81b937260522d25eda5d81bff3f5d460e5e14512f471c8eaec9afb`.
-Its exact reviewed semantic entitlements are also required after console-home
-substitution.
-
-Mach-O normalization zeroes only `LC_CODE_SIGNATURE.dataoff/datasize` and the
-signature-size-dependent `__LINKEDIT` `vmsize/filesize`, then omits the exact
-original signature blob. It retains `__LINKEDIT.fileoff` and every other byte.
-
-The normalized entitlement SHA-256 is
-`5897ec7c1e895de492424821a7b5dbe4bea2552345244c20029a4083a4bb01f4`.
-Canonicalization is UTF-8 and begins `PCVR-ENTITLEMENTS/1\n`. The exact console
-home in the three path-bearing SBPL strings becomes `@CONSOLE_HOME@`.
-Dictionary keys sort by raw UTF-8; true booleans use
-`B <keyByteCount> <key>\n`; the ordered array uses
-`A <keyByteCount> <key> <count>\n`, followed by
-`S <valueByteCount> <value>\n` per element. There is no whitespace or trailing
-material beyond those record newlines. The controller additionally compares
-the decoded Security.framework entitlement dictionary semantically.
-
-Every directory from the resolved console home through the imported app, and
-every directory inside that app, must be a real (non-symlink) directory owned
-by the console UID, without group/other write access, extended ACL entries, or
-immutable/append flags. Every reviewed Mach-O must be a single-link regular
-file with the same protections and stable descriptor metadata.
-
-After process discovery, the controller enumerates the target's executable VM
-regions using `PROC_PIDREGIONPATHINFO`. Every path-bearing image must be either
-an exact allowlist path whose mapped vnode identity matches preflight, or a
-root-owned, non-writable image under a fixed Apple system prefix. Pathless
-file-backed executable mappings are rejected; anonymous `dev=ino=0` mappings
-remain permitted for Unity JIT. The mapped main, UnityFramework, and Appdome
-`libloader` are mandatory before the first policy write, immediately after
-readback, and on every one-second safety pass. Any enumeration uncertainty,
-disk metadata change, or unreviewed image publishes `FAILED runtime_images`
-and triggers the existing exact-task fail-closed path.
-
-The first launch-time check allows at most two seconds for the required
-UnityFramework and `libloader` mappings to appear after the exact main process
-is discovered. Only a missing required core image is retried in that window;
-unreviewed paths, vnode mismatches, and enumeration errors fail immediately.
+It still checks the exact independent-library executable path, console UID,
+regular-file metadata, and stable process identity. These checks prevent a path
+confusion or cross-user bind; they are not a VRChat content allowlist.
 
 ## Fail-closed safety
 
 - The controller must run on arm64. The recorded macOS build/XNU values are test
-  metadata, not a point-release lock; reviewed VRChat identity and live policy
-  readback remain mandatory.
+  metadata, not a point-release lock; live policy readback remains mandatory.
 - File descriptor metadata, process UUID/UID/PID/unique ID/start time,
   audit-token path, and readback policy must remain exact.
 - Only the known RunningBoard `-1/-1` reset is repaired. Unfamiliar policy,

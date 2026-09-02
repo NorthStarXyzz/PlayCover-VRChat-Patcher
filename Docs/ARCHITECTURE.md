@@ -5,25 +5,25 @@
 The product has three separately reviewable components:
 
 1. **Patcher** verifies an official PlayCover and an embedded, prebuilt payload,
-   imports one exact VRChat bundle, and publishes a separate app. It never edits
-   the official app or VRChat.
+   imports the VRChat bundle, and publishes a separate app. It never edits the
+   official app or VRChat.
 2. **PlayCover VRChat** owns settings and launch ordering. It cannot set a memory
    policy, cannot receive administrator credentials, and never falls back to a
    standard VRChat launch.
 3. **Controller/helper** runs as root only after an explicit authorization. It
-   accepts one bounded GiB selection and can affect only the reviewed VRChat
-   executable in the independent library.
+   accepts one bounded GiB selection and can affect only the exact VRChat
+   executable path in the independent library.
 
 No component downloads executable, identity, or policy input at runtime.
 
 ## Parallel-install transaction
 
 ```text
-exact /Applications/PlayCover.app
-              │ read-only identity + version verification
+selected /Applications/PlayCover.app (or nightly)
+              │ read-only bundle identity + safe arm64 structure
               ▼
- exact source-library VRChat
-              │ composite Mach-O/entitlement/framework verification
+exact source-library VRChat
+              │ path and copy-integrity verification (no version/hash gate)
               ▼
  hidden same-volume app + import staging
               │ clone/copy; forbid hard links; verify full source=destination
@@ -44,29 +44,18 @@ installed experimental root runner/controller must be removed through its
 reviewed `--uninstall` flow. A future formal Remove may unregister the helper
 only after the signed, notarized maintenance protocol passes its release gate.
 
-## VRChat identity
+## VRChat target safety
 
-The signed main executable SHA is not portable across PlayCover's per-machine
-ad-hoc signatures. The import and root controller therefore share one stable,
-fail-closed identity:
+VRChat is intentionally not a compatibility allowlist. The patcher does not
+compare its version, build number, code signature, UUID, entitlements, Unity or
+Appdome hashes, or Mach-O inventory with the manifest. This lets users update
+VRChat without waiting for a patcher release.
 
-- thin arm64 main UUID;
-- normalized unsigned Mach-O SHA-256;
-- normalized header/load-command SHA-256;
-- canonical semantic-entitlements SHA-256 with only the console-home prefix
-  replaced by `@CONSOLE_HOME@`;
-- a canonical 46-entry `PCVR-MACHO-ALLOWLIST/1` covering every thin-arm64
-  Mach-O in the reviewed bundle, including UnityFramework and Appdome
-  `libloader`;
-- exact bundle ID and version/build.
-
-Normalization zeroes `LC_CODE_SIGNATURE` dataoff/datasize and `__LINKEDIT`
-vmsize/filesize, then omits the original signature blob. It does not ignore any
-executable code, load dependency, entitlement, Unity, or Appdome difference.
-The root controller also binds the target's actual executable VM mappings to
-the reviewed paths and vnode metadata before policy activation and while the
-lease is maintained; extra, missing, moved, or swapped file-backed code fails
-closed.
+The only VRChat checks are operational safety checks: the source and destination
+must be real files below the expected user-owned library, copies must match each
+other after import, and the controller binds the exact executable path and UID.
+These checks prevent path confusion or a corrupted copy; they are not a version
+or content gate.
 
 ## Memory selection
 

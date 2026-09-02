@@ -7,7 +7,6 @@ repo_root=${0:A:h:h:h}
 test_directory=$(/usr/bin/mktemp -d /tmp/pcvr-controller-tests.XXXXXX)
 test_output="$test_directory/protocol-tests"
 controller_output="$test_directory/argument-canary"
-allowlist_generator="$test_directory/allowlist-generator"
 
 cleanup() {
     if [[ -d "$test_directory" &&
@@ -27,7 +26,6 @@ trap 'exit 129' HUP
     -I"$repo_root/Controller" \
     "$repo_root/Controller/pcvr-bundle-identity.c" \
     "$repo_root/Controller/pcvr-memory-policy.c" \
-    "$repo_root/Controller/pcvr-runtime-images.c" \
     "$repo_root/Controller/pcvr-status-protocol.c" \
     "$repo_root/Controller/pcvr-target.c" \
     "$repo_root/Tests/Controller/fake-backend.c" \
@@ -40,27 +38,9 @@ trap 'exit 129' HUP
 /usr/bin/xcrun clang \
     -std=c11 -O2 \
     -Wall -Wextra -Werror -Wconversion -Wsign-conversion \
-    -I"$repo_root/Controller" \
-    "$repo_root/Tests/Controller/generate-reviewed-allowlist.c" \
-    "$repo_root/Controller/pcvr-bundle-identity.c" \
-    -framework CoreFoundation -framework Security \
-    -o "$allowlist_generator"
-
-if [[ -n ${PCVR_TEST_REVIEWED_EXECUTABLE:-} ]]; then
-    reviewed_app=${PCVR_TEST_REVIEWED_EXECUTABLE:h}
-    regenerated_allowlist="$test_directory/pcvr-reviewed-macho-allowlist.h"
-    "$allowlist_generator" "$reviewed_app" > "$regenerated_allowlist"
-    /usr/bin/cmp "$regenerated_allowlist" \
-        "$repo_root/Controller/pcvr-reviewed-macho-allowlist.h"
-fi
-
-/usr/bin/xcrun clang \
-    -std=c11 -O2 \
-    -Wall -Wextra -Werror -Wconversion -Wsign-conversion \
     "$repo_root/Controller/vrchat-memory-policy-controller.c" \
     "$repo_root/Controller/pcvr-bundle-identity.c" \
     "$repo_root/Controller/pcvr-memory-policy.c" \
-    "$repo_root/Controller/pcvr-runtime-images.c" \
     "$repo_root/Controller/pcvr-status-protocol.c" \
     "$repo_root/Controller/pcvr-target.c" \
     -framework CoreFoundation -framework Security \

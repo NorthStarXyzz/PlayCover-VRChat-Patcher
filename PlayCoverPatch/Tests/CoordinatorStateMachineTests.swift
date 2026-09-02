@@ -60,18 +60,7 @@ private func makeTestBundleIdentity(
 ) -> VRChatCompatibleBundleIdentity {
     VRChatCompatibleBundleIdentity(
         appURL: appURL,
-        executableURL: appURL.appendingPathComponent("VRChat"),
-        machoCount: VRChatMemoryPolicyManifest.reviewedMachOCount,
-        machoAllowlistSHA256:
-            VRChatMemoryPolicyManifest.reviewedMachOAllowlistSHA256,
-        mainUUID: VRChatMemoryPolicyManifest.reviewedMainUUID,
-        mainNormalizedUnsignedSHA256:
-            VRChatMemoryPolicyManifest.reviewedMainNormalizedUnsignedSHA256,
-        mainNormalizedLoadCommandsSHA256:
-            VRChatMemoryPolicyManifest
-                .reviewedMainNormalizedLoadCommandsSHA256,
-        entitlementsSHA256:
-            "5897ec7c1e895de492424821a7b5dbe4bea2552345244c20029a4083a4bb01f4"
+        executableURL: appURL.appendingPathComponent("VRChat")
     )
 }
 

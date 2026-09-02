@@ -4,13 +4,13 @@
     "relativePath": "Controller/PlayCoverVRChatMemoryPolicy.pkg",
     "identifier": "io.github.northstarxyzz.pcvrpatcher.memory-policy",
     "version": "0.1.0",
-    "sha256": "4a15dd16931856b382fb25e6c0f68f5bf3bcbe3a6bf5f15d1e17cc4d4c270d8b",
+    "sha256": "081fa59f95d2f0ed52aba93a79da65b7bb27675560fb44248e36c2a5eb997770",
     "controllerBuildID": "capability-vrchat-2026.2.30300-1365-r7",
     "controllerQuarantinePath": "/usr/local/libexec/playcover-vrchat-memory-policy/.controller.pcvr-install",
     "runnerQuarantinePath": "/usr/local/bin/.playcover-vrchat-memory-policy.pcvr-install",
     "runner": {
       "path": "/usr/local/bin/playcover-vrchat-memory-policy",
-      "sha256": "49f7cc361b072891182144e0f8141412b192c2647c0740c7febc5483b01337dd",
+      "sha256": "a642a0c298c046fe54321971b09ef9a83a1fd9379ec6b1f02ad264630d9e5225",
       "uid": 0,
       "gid": 0,
       "mode": "0555",
@@ -18,7 +18,7 @@
     },
     "controller": {
       "path": "/usr/local/libexec/playcover-vrchat-memory-policy/controller",
-      "sha256": "24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73",
+      "sha256": "fa53e940f40ec833fcf16a06ea3e81fa27fb89f980426cf710e8700867cd74c2",
       "uid": 0,
       "gid": 0,
       "mode": "0500",
@@ -26,7 +26,7 @@
     },
     "attestation": {
       "path": "/usr/local/libexec/playcover-vrchat-memory-policy/installation.json",
-      "sha256": "45b471725262b670ede72a398bc8b6c34b9ea21eac1859ad9e7c849248b66d9b",
+      "sha256": "b7123bc37ce5279e222d47b63c400be42f1137a4e6d94dae8798ffc8eb263672",
       "uid": 0,
       "gid": 0,
       "mode": "0444",
@@ -79,6 +79,11 @@
       "name": "pre-provenance-fix-r6",
       "controllerSHA256": "b8c28482f675761b8c6ae3422c87b01f58c1356ae56b5556dec2d1eec825e67f",
       "runnerSHA256": "039047ea409a4cd5b27f142b657f239ec99bbed6e2ee1a866bf031a81973f558"
+    },
+    {
+      "name": "previous-r7",
+      "controllerSHA256": "24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73",
+      "runnerSHA256": "49f7cc361b072891182144e0f8141412b192c2647c0740c7febc5483b01337dd"
     }
   ],
   "developmentSignaturePolicy": "unsigned-local-alpha",

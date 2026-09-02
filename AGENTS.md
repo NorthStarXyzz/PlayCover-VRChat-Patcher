@@ -23,19 +23,20 @@ source-only DMG as a ready-to-install compatibility fix.
 
 ## Compatibility baseline
 
-The reviewed test baseline is:
+The reviewed PlayCover test baseline is:
 
 - Apple silicon arm64
 - macOS 26.6, build `25G70` (metadata only; not a runtime lock)
-- PlayCover `3.1.0 (856)` (test baseline)
-- VRChat `2026.2.30300 (1365)`
+- PlayCover `3.1.0 (856)`
+- VRChat is copied from the user's PlayCover library as-is; its version, hashes,
+  entitlements, UUIDs and nested Mach-O files are not allowlisted.
 
-The selected PlayCover source is checked for its bundle identity and safe arm64
-structure; its version, executable hash, UUID and tree hash are not an allowlist.
-The bundled patched payload and controller package remain exactly pinned. VRChat
-is copied as-is and is not content allowlisted. Host build/XNU strings are not
-used as an allowlist; the controller uses arm64 and live policy/readback checks,
-and fails closed when those checks fail.
+The selected source app is checked only for the PlayCover bundle identity and
+safe arm64 app structure; its version, executable hash, UUID and tree hash are
+not an allowlist. The bundled patched payload and controller package remain
+exactly pinned. Host build/XNU strings are not used as an allowlist; the
+controller uses arm64 and live policy/readback checks, and fails closed when
+those checks fail.
 
 ## Required checks
 
@@ -74,12 +75,12 @@ performs its live identity and policy checks before maintaining a session.
 - Apply patches in the order listed by `PlayCoverPatch/series`.
 - Use `Scripts/fetch-playcover.sh`, `Scripts/apply-playcover-patches.sh`, and
   `PlayCoverPatch/check.sh`; do not hand-edit a generated `Build/PlayCover` tree.
-- VRChat must launch from the independent library's exact URL.
-- PlayTools must not be injected or installed for VRChat. The compatible launch
-  path verifies that PlayTools is absent and fails closed if it is present.
+- VRChat must launch from the independent library's exact URL. The patcher only
+  checks that the source and destination are safe to copy (regular ownership,
+  path, and link rules); it does not inspect VRChat content.
 - The controller applies a temporary XNU `memorystatus_control` soft limit to
-  the exact reviewed VRChat process. It does not hook Unity, patch VRChat, or
-  modify Appdome/libloader.
+  the exact process at that URL. It does not hook Unity, patch VRChat, or modify
+  Appdome/libloader.
 - Never disable SIP/AMFI, modify system libraries, or use an arbitrary PID,
   path, limit, or command from UI input.
 - Never run `sudo`, an Installer package, or VRChat as part of automated tests.
@@ -107,13 +108,14 @@ corresponding tests and README text.
 
 ## Compatibility changes
 
-Any change to a version, hash, UUID, controller build ID, protocol, memory
-policy, PlayTools behavior, or bundle identity requires all of:
+Any change to a PlayCover/payload version or hash, controller build ID, protocol,
+memory policy, PlayTools behavior, or bundle identity requires all of:
 
 1. a reviewed manifest/schema update;
 2. matching controller and PlayCover constants;
 3. regression tests and a clean patch-series check; and
-4. updated user-facing documentation.
+4. updated user-facing documentation. VRChat releases do not require a manifest
+   change; do not add a VRChat content allowlist.
 
 Do not add a new allowlist entry merely to make a local failure pass.
 

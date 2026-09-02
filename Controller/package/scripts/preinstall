@@ -74,7 +74,7 @@ if [[ -e "$attestation" || -L "$attestation" ]]; then
     verify_file_metadata "$attestation" 444
     attestation_sha=$(sha256 "$attestation")
     case "$attestation_sha" in
-        "$current_attestation_sha"|"$r6_installed_attestation_sha") ;;
+        "$current_attestation_sha"|"$r6_installed_attestation_sha"|"$r7_previous_attestation_sha") ;;
         *) fail "Unknown controller attestation: $attestation" ;;
     esac
     attestation_present=1
@@ -100,7 +100,8 @@ fi
 if (( attestation_present )); then
     case "$attestation_sha:$controller_sha:$runner_sha" in
         "$current_attestation_sha:$current_controller_sha:$current_runner_sha"|\
-        "$r6_installed_attestation_sha:$r6_installed_controller_sha:$r6_installed_runner_sha") ;;
+        "$r6_installed_attestation_sha:$r6_installed_controller_sha:$r6_installed_runner_sha"|\
+        "$r7_previous_attestation_sha:$r7_previous_controller_sha:$r7_previous_runner_sha") ;;
         *) fail "Refusing a mixed controller attestation and executable pair." ;;
     esac
 fi
@@ -126,7 +127,10 @@ if (( ! install_journal_was_new )); then
         quarantine-r6-installed)
             quarantine_predecessor_pair "$r6_installed_controller_sha" "$r6_installed_runner_sha"
             ;;
-        complete-quarantine-r5|complete-quarantine-r3|complete-quarantine-r6-previous)
+        quarantine-r7-previous)
+            quarantine_predecessor_pair "$r7_previous_controller_sha" "$r7_previous_runner_sha"
+            ;;
+        complete-quarantine-r5|complete-quarantine-r3|complete-quarantine-r6-previous|complete-quarantine-r7-previous)
             verify_owned_install_transition
             /bin/mv "$runner" "$runner_quarantine"
             verify_predecessor_runner "$runner_quarantine"
@@ -181,6 +185,13 @@ case "$controller_present:$runner_present:$attestation_present:$installed_receip
             quarantine_predecessor_pair "$r6_previous_controller_sha" "$r6_previous_runner_sha"
             print -- "Upgrading the explicitly reviewed pre-xattr-fix r6 controller pair."
         fi
+        ;;
+    1:1:1:current:"$r7_previous_controller_sha":"$r7_previous_runner_sha"|\
+    1:1:1:absent:"$r7_previous_controller_sha":"$r7_previous_runner_sha"|\
+    1:1:0:absent:"$r7_previous_controller_sha":"$r7_previous_runner_sha")
+        keep_install_journal=1
+        quarantine_predecessor_pair "$r7_previous_controller_sha" "$r7_previous_runner_sha"
+        print -- "Upgrading the explicitly reviewed previous r7 controller pair."
         ;;
     *)
         fail "Refusing an unknown, mixed, partial, or receipt-mismatched controller installation."

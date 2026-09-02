@@ -38,6 +38,11 @@ public protocol VRChatConfigurationMigrating: Sendable {
     ) throws -> VRChatConfigurationState
 }
 
+/// Migrates the small PlayCover configuration surface needed by the copied
+/// app.  VRChat files are treated as opaque user data: plist shape, version,
+/// entitlements and private settings keys never decide compatibility.  The
+/// remaining checks protect the transaction from symlinks, unsupported nodes
+/// and paths that escape the two PlayCover libraries.
 public struct SelectiveVRChatConfigurationMigrator: VRChatConfigurationMigrating {
     public static let entitlementRelativePath =
         "Entitlements/com.vrchat.mobile.plist"
@@ -46,62 +51,10 @@ public struct SelectiveVRChatConfigurationMigrator: VRChatConfigurationMigrating
     public static let keymappingRelativePath =
         "Keymapping/com.vrchat.mobile"
 
-    public static let safeAppSettingKeys: Set<String> = [
-        "aspectRatio",
-        "bundleIdentifier",
-        "customScaler",
-        "disableBuiltinMouse",
-        "displayRotation",
-        "enableScrollWheel",
-        "floatingWindow",
-        "hideTitleBar",
-        "inverseScreenValues",
-        "keymapping",
-        "noKMOnInput",
-        "notch",
-        "resizableAspectRatioHeight",
-        "resizableAspectRatioType",
-        "resizableAspectRatioWidth",
-        "resolution",
-        "sensitivity",
-        "version",
-        "windowHeight",
-        "windowWidth"
-    ]
-
     public static let publishedRelativePaths = [
         entitlementRelativePath,
         appSettingsRelativePath,
         keymappingRelativePath
-    ]
-
-    private static let booleanKeys: Set<String> = [
-        "disableBuiltinMouse",
-        "enableScrollWheel",
-        "floatingWindow",
-        "hideTitleBar",
-        "inverseScreenValues",
-        "keymapping",
-        "noKMOnInput",
-        "notch"
-    ]
-    private static let integralKeys: Set<String> = [
-        "aspectRatio",
-        "displayRotation",
-        "resizableAspectRatioHeight",
-        "resizableAspectRatioType",
-        "resizableAspectRatioWidth",
-        "resolution",
-        "windowHeight",
-        "windowWidth"
-    ]
-    private static let numericKeys: Set<String> = [
-        "customScaler",
-        "sensitivity"
-    ]
-    private static let stringKeys: Set<String> = [
-        "bundleIdentifier",
-        "version"
     ]
 
     public init() {}
@@ -205,20 +158,11 @@ public struct SelectiveVRChatConfigurationMigrator: VRChatConfigurationMigrating
             )
         }
 
+        // Configuration is user-owned VRChat data.  Read the files to prove
+        // they are regular, bounded files, but do not interpret their plist
+        // contents as a compatibility or version gate.
         let entitlementData = try SecureFileSystem.readRegularFile(entitlement)
-        guard try Self.propertyListDictionary(entitlementData) != nil else {
-            throw PatcherError.unknownModification(
-                "VRChat entitlement profile is not a property-list dictionary"
-            )
-        }
-
         let settingsData = try SecureFileSystem.readRegularFile(appSettings)
-        guard let settings = try Self.propertyListDictionary(settingsData) else {
-            throw PatcherError.unknownModification(
-                "VRChat App Settings is not a property-list dictionary"
-            )
-        }
-        try Self.validateSanitizedSettings(settings)
 
         let keymapArtifacts = try Self.readKeymappingArtifacts(
             at: keymapping,
@@ -272,25 +216,11 @@ public struct SelectiveVRChatConfigurationMigrator: VRChatConfigurationMigrating
         )
 
         let entitlementData = try Self.requiredRegularFile(entitlement)
-        guard try Self.propertyListDictionary(entitlementData) != nil else {
-            throw PatcherError.unknownModification(
-                "source VRChat entitlement profile is not a property-list dictionary"
-            )
-        }
         let sourceSettingsData = try Self.requiredRegularFile(appSettings)
-        guard let sourceSettings = try Self.propertyListDictionary(
-            sourceSettingsData
-        ) else {
-            throw PatcherError.unknownModification(
-                "source VRChat App Settings is not a property-list dictionary"
-            )
-        }
-        let sanitizedSettings = try Self.sanitize(settings: sourceSettings)
-        let sanitizedData = try PropertyListSerialization.data(
-            fromPropertyList: sanitizedSettings,
-            format: .xml,
-            options: 0
-        )
+        // App Settings are user data. Copy the bytes as-is; their private
+        // schema, version and bundle identifier are never a compatibility
+        // gate.
+        let migratedSettingsData = sourceSettingsData
 
         guard Self.nodeKind(keymapping) == .directory else {
             if Self.nodeKind(keymapping) == nil {
@@ -307,7 +237,7 @@ public struct SelectiveVRChatConfigurationMigrator: VRChatConfigurationMigrating
             ),
             Artifact(
                 relativePath: Self.appSettingsRelativePath,
-                data: sanitizedData
+                data: migratedSettingsData
             )
         ]
         artifacts.append(contentsOf: try Self.readKeymappingArtifacts(
@@ -366,93 +296,6 @@ public struct SelectiveVRChatConfigurationMigrator: VRChatConfigurationMigrating
         }
     }
 
-    private static func propertyListDictionary(
-        _ data: Data
-    ) throws -> [String: Any]? {
-        try PropertyListSerialization.propertyList(
-            from: data,
-            options: [],
-            format: nil
-        ) as? [String: Any]
-    }
-
-    private static func sanitize(
-        settings: [String: Any]
-    ) throws -> [String: Any] {
-        var result: [String: Any] = [:]
-        for key in safeAppSettingKeys {
-            guard let value = settings[key] else {
-                throw PatcherError.unknownModification(
-                    "source VRChat App Settings is missing safe field \(key)"
-                )
-            }
-            try validateSetting(value, for: key)
-            result[key] = value
-        }
-        try validateSanitizedSettings(result)
-        return result
-    }
-
-    private static func validateSanitizedSettings(
-        _ settings: [String: Any]
-    ) throws {
-        // PlayCover expands this plist as it runs. Only the small subset copied
-        // during initial import is required here; additional settings remain
-        // ordinary user data and do not turn the installation into an error.
-        for key in safeAppSettingKeys {
-            guard let value = settings[key] else {
-                throw PatcherError.unknownModification(
-                    "VRChat App Settings is missing safe field \(key)"
-                )
-            }
-            try validateSetting(value, for: key)
-        }
-        guard settings["bundleIdentifier"] as? String == "com.vrchat.mobile" else {
-            throw PatcherError.unknownModification(
-                "VRChat App Settings has an unexpected bundle identifier"
-            )
-        }
-    }
-
-    private static func validateSetting(_ value: Any, for key: String) throws {
-        let valid: Bool
-        if booleanKeys.contains(key) {
-            valid = isBoolean(value)
-        } else if integralKeys.contains(key) {
-            valid = isIntegralNumber(value)
-        } else if numericKeys.contains(key) {
-            valid = isNumber(value)
-        } else if stringKeys.contains(key) {
-            valid = value is String
-        } else {
-            valid = false
-        }
-        guard valid else {
-            throw PatcherError.unknownModification(
-                "VRChat App Settings field \(key) has an invalid type"
-            )
-        }
-    }
-
-    private static func isBoolean(_ value: Any) -> Bool {
-        guard let number = value as? NSNumber else { return false }
-        return CFGetTypeID(number) == CFBooleanGetTypeID()
-    }
-
-    private static func isNumber(_ value: Any) -> Bool {
-        guard let number = value as? NSNumber else { return false }
-        return CFGetTypeID(number) != CFBooleanGetTypeID() &&
-            number.doubleValue.isFinite
-    }
-
-    private static func isIntegralNumber(_ value: Any) -> Bool {
-        guard isNumber(value), let number = value as? NSNumber else {
-            return false
-        }
-        let double = number.doubleValue
-        return double.rounded(.towardZero) == double
-    }
-
     private static func readKeymappingArtifacts(
         at directory: URL,
         expectedLibrary: URL,
@@ -488,21 +331,24 @@ public struct SelectiveVRChatConfigurationMigrator: VRChatConfigurationMigrating
             var data = try SecureFileSystem.readRegularFile(child)
             if child.pathExtension == "plist" &&
                 child.lastPathComponent.hasSuffix(".config.plist") {
-                let plist = try PropertyListSerialization.propertyList(
+                // Rewrite known in-library file URLs when possible.  A
+                // malformed or newer keymap is copied byte-for-byte instead
+                // of being treated as an unsupported VRChat installation.
+                if let plist = try? PropertyListSerialization.propertyList(
                     from: data,
                     options: [],
                     format: nil
-                )
-                let rewritten = try rewriteFileURLs(
+                ), let rewritten = try? rewriteFileURLs(
                     in: plist,
                     expectedLibrary: expectedLibrary,
                     rewriteFrom: originalLibrary
-                )
-                data = try PropertyListSerialization.data(
+                ), let rewrittenData = try? PropertyListSerialization.data(
                     fromPropertyList: rewritten,
                     format: .xml,
                     options: 0
-                )
+                ) {
+                    data = rewrittenData
+                }
             }
             artifacts.append(Artifact(
                 relativePath:

@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  A free, open-source compatibility patcher for PlayCover and VRChat.
-  The official PlayCover installation stays untouched.
+  A free, open-source compatibility patcher for PlayCover. The official
+  PlayCover installation stays untouched.
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 
 - Keeps `/Applications/PlayCover.app` unchanged.
 - Creates `/Applications/PlayCover VRChat.app` with its own library.
-- Imports the VRChat installation without a VRChat version allowlist.
+- Imports the VRChat installation without a version or binary allowlist.
 - Starts VRChat with a transient memory soft limit.
 - Lets you use automatic 75% memory or choose a custom whole-GiB limit.
 
@@ -40,7 +40,8 @@ The patch engine, verification, and controller are original to this project.
 ## How it works
 
 1. The patcher copies the official PlayCover into a separate app and library.
-2. It imports the VRChat bundle without changing VRChat or injecting a dylib.
+2. It imports the VRChat bundle and verifies the copied tree without changing
+   VRChat or injecting a dylib.
 3. When VRChat starts, the patched PlayCover asks the authorized controller to wait
    for that exact VRChat process.
 4. The controller applies a non-fatal memory soft limit and repairs known
@@ -51,10 +52,9 @@ PlayTools is kept out of the VRChat launch path because its injection can make t
 game's integrity check fail. Removing that conflict lets the check pass normally.
 The memory policy changes the system's reported limit; it does not pre-allocate RAM.
 
-On the reviewed VRChat build, the T5/T6 comparison showed that a non-zero memory
-result was necessary for the observed remote avatar and model AssetBundle loading.
-This is a compatibility observation for the locked build, not a promise for every
-future VRChat version.
+The non-zero policy addresses the `0 MB` memory report that can prevent remote
+avatar and image resources from loading. VRChat itself is not version- or
+hash-locked by the patcher.
 
 ## How the installed controller works
 
@@ -64,11 +64,11 @@ macOS's XNU `memorystatus_control` interface to apply a temporary memory limit t
 the exact VRChat process. It uses
 `MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES`, then reads the policy back.
 
-It calculates the safe maximum from `hw.memsize`, verifies the reviewed VRChat
-bundle and the current arm64 host capability, waits for the process, reads the
-policy back, and repairs known RunningBoard resets. When VRChat exits, the policy
-is removed. Any identity, pressure, or policy mismatch stops safely instead of
-touching another process. A macOS point-release build number is not a lock.
+It calculates the safe maximum from `hw.memsize`, checks the fixed target path and
+current arm64 host capability, waits for the process, reads the policy back, and
+repairs known RunningBoard resets. When VRChat exits, the policy is removed. Any
+path, pressure, or policy mismatch stops safely instead of touching another
+process. A macOS point-release build number is not a lock.
 
 The reported headroom is dynamic: selected limit minus current footprint. The
 controller does not fake a memory API result, hook Unity, or modify Appdome or
@@ -80,14 +80,15 @@ controller does not fake a memory API result, hook Unity, or modify Appdome or
 
 - Apple silicon Mac
 - macOS 26.6 / build `25G70` (test baseline; not a runtime lock)
-- PlayCover `3.1.0 (856)` (test baseline)
-- VRChat `2026.2.30300 (1365)`
+- PlayCover `3.1.0 (856)`
+- VRChat (the build installed in your PlayCover library)
 
-The selected PlayCover source is checked for its bundle identity and safe arm64
-structure. Its version, executable hash, UUID and tree hash are not an allowlist,
-so compatible nightly builds can be used as the source/library anchor. The
-patched app itself still comes from the reviewed payload bundled with this tool.
-VRChat content is copied as-is.
+The selected PlayCover source is checked only for its bundle identity and safe
+arm64 app structure, so official nightly builds are accepted too. Its version,
+executable hash, UUID and tree hash are not an allowlist. The patched copy still
+comes from the exact reviewed payload bundled with this Patcher; carrying a
+nightly's own UI changes requires a separately reviewed payload build. Host
+build/XNU values are test metadata, not a point-release lock.
 
 ### First launch
 
@@ -141,8 +142,9 @@ The original app and its library are not removed by Patch, Repair, or Remove.
 
 ## Limitations
 
-- This is a developer Alpha, not a general PlayCover release.
-- Foreign bundles, unsafe app structures, or unsupported architectures stop safely.
+- This is a PlayCover-versioned developer Alpha, not a general PlayCover release.
+- Unsupported PlayCover or architecture combinations stop safely. VRChat is not
+  rejected for its version or binary contents.
 - Do not use unreviewed CI artifacts or modified payloads.
 - A public signed and notarized release is not available yet.
 
