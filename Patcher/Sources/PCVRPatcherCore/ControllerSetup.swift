@@ -270,6 +270,14 @@ public enum RootControllerInstallationVerifier {
     // These are reviewed predecessor identities. They are accepted solely as
     // one-time upgrade paths; no other unknown runner or attestation is
     // accepted here.
+    // This was the exact capability-gated package shipped before the current
+    // r7 payload. Keep it as a complete, paired identity so an installed
+    // earlier Patcher can be upgraded without treating its root files as
+    // arbitrary.
+    private static let reviewedPreR7RunnerSHA256 =
+        "49f7cc361b072891182144e0f8141412b192c2647c0740c7febc5483b01337dd"
+    private static let reviewedPreR7AttestationSHA256 =
+        "45b471725262b670ede72a398bc8b6c34b9ea21eac1859ad9e7c849248b66d9b"
     private static let installedR6RunnerSHA256 =
         "26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af"
     private static let installedR6AttestationSHA256 =
@@ -294,6 +302,14 @@ public enum RootControllerInstallationVerifier {
     ) -> Bool {
         runnerSHA256.caseInsensitiveCompare(installedR6RunnerSHA256) == .orderedSame &&
             attestationSHA256.caseInsensitiveCompare(installedR6AttestationSHA256) == .orderedSame
+    }
+
+    static func isReviewedPreR7Pair(
+        runnerSHA256: String,
+        attestationSHA256: String
+    ) -> Bool {
+        runnerSHA256.caseInsensitiveCompare(reviewedPreR7RunnerSHA256) == .orderedSame &&
+            attestationSHA256.caseInsensitiveCompare(reviewedPreR7AttestationSHA256) == .orderedSame
     }
 
     public static func inspect(
@@ -657,6 +673,12 @@ public enum RootControllerInstallationVerifier {
         ) == .orderedSame
         guard runnerMatches, attestationMatches else {
             if Self.isReviewedInstalledR6Pair(
+                runnerSHA256: runnerHash,
+                attestationSHA256: attestationHash
+            ), receipt == .exact || receipt == .absent {
+                return .knownUpgradeRequired
+            }
+            if Self.isReviewedPreR7Pair(
                 runnerSHA256: runnerHash,
                 attestationSHA256: attestationHash
             ), receipt == .exact || receipt == .absent {

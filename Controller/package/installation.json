@@ -4,6 +4,6 @@
   "packageVersion": "0.1.0",
   "controllerBuildID": "capability-vrchat-2026.2.30300-1365-r7",
   "controllerPath": "/usr/local/libexec/playcover-vrchat-memory-policy/controller",
-  "controllerSHA256": "24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73",
+  "controllerSHA256": "fa53e940f40ec833fcf16a06ea3e81fa27fb89f980426cf710e8700867cd74c2",
   "runnerPath": "/usr/local/bin/playcover-vrchat-memory-policy"
 }

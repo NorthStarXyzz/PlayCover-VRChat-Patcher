@@ -29,23 +29,12 @@ enum VRChatMemoryPolicyManifest {
         "/private/var/run/io.github.northstarxyzz.pcvrpatcher/session.sock"
     static let runnerPath = "/usr/local/bin/playcover-vrchat-memory-policy"
     static let reviewedRunnerSHA256 =
-        "49f7cc361b072891182144e0f8141412b192c2647c0740c7febc5483b01337dd"
+        "a642a0c298c046fe54321971b09ef9a83a1fd9379ec6b1f02ad264630d9e5225"
     static let controllerBuildID = "capability-vrchat-2026.2.30300-1365-r7"
-    static let expectedShortVersion = "2026.2.30300"
-    static let expectedBuildVersion = "1365"
     static let expectedExecutableName = "VRChat"
-    static let reviewedMachOCount = 46
-    static let reviewedMachOAllowlistSHA256 =
-        "60df094badbe3fb9e8f051f07d2a38a54cfb7bd592c3cf62a69e355050ec5109"
-    static let reviewedMainUUID = "41cadb30ccef3b6c8a1d237ce5d64c42"
-    static let reviewedMainNormalizedUnsignedSHA256 =
-        "cd6749e212d1ffed0e48a85cbd4d803e419eac8634fa1dcd62e25ea153e5bec3"
-    static let reviewedMainNormalizedLoadCommandsSHA256 =
-        "664266000f81b937260522d25eda5d81bff3f5d460e5e14512f471c8eaec9afb"
-    // The root controller performs a full reviewed-bundle/Mach-O identity
-    // check before publishing its socket.  Five seconds is too short on a
-    // cold filesystem scan; keep this bounded, but give that fail-closed
-    // preflight enough time to finish.
+    // The controller handshake is bounded so a missing or unusable target
+    // never leaves the UI waiting forever.  It does not depend on a VRChat
+    // version or binary identity.
     static let handshakeTimeout: TimeInterval = 30
     static let minimumLimitGiB: UInt16 = 4
     static let lowMemoryWarningBelowGiB: UInt16 = 8
@@ -310,15 +299,12 @@ struct UserDefaultsVRChatMemoryPolicyConfigurationProvider:
     }
 }
 
+/// Path-only launch target information.  The old implementation carried a
+/// reviewed VRChat Mach-O composite identity here; that gate has been removed
+/// so new VRChat releases do not require a patcher update.
 struct VRChatCompatibleBundleIdentity: Equatable {
     let appURL: URL
     let executableURL: URL
-    let machoCount: Int
-    let machoAllowlistSHA256: String
-    let mainUUID: String
-    let mainNormalizedUnsignedSHA256: String
-    let mainNormalizedLoadCommandsSHA256: String
-    let entitlementsSHA256: String
 }
 
 protocol VRChatCompatibleBundleIdentityValidating {
@@ -358,28 +344,19 @@ enum VRChatCompatibleBundleIdentityError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case let .unexpectedAppURL(expected, found):
+        case .unexpectedAppURL,
+             .unsafePath,
+             .invalidBundleMetadata,
+             .invalidCodeSignature,
+             .identityMismatch,
+             .launchedProcessMismatch,
+             .targetPIDMismatch:
+            // These are launch-path safety failures, not VRChat content or
+            // compatibility failures. Keep the user-facing text neutral;
+            // the stable code retains the diagnostic detail for the log.
             return String(format: NSLocalizedString(
-                "error.vrchatIdentity.unexpectedURL", comment: ""
-            ), expected, found)
-        case let .unsafePath(path, reason):
-            return String(format: NSLocalizedString(
-                "error.vrchatIdentity.unsafePath", comment: ""
-            ), path, reason)
-        case let .invalidBundleMetadata(reason),
-             let .identityMismatch(reason),
-             let .launchedProcessMismatch(reason):
-            return String(format: NSLocalizedString(
-                "error.vrchatIdentity.mismatch", comment: ""
-            ), reason)
-        case let .invalidCodeSignature(status):
-            return String(format: NSLocalizedString(
-                "error.vrchatIdentity.signature", comment: ""
-            ), status)
-        case let .targetPIDMismatch(expected, found):
-            return String(format: NSLocalizedString(
-                "error.vrchatIdentity.pid", comment: ""
-            ), expected, found)
+                "error.vrchatMemoryPolicy.protocol", comment: ""
+            ), stableCode)
         }
     }
 }
@@ -484,36 +461,6 @@ enum PCVRFilesystemSafety {
         return true
     }
 
-    static func readExact(
-        descriptor: Int32,
-        count: Int,
-        offset: Int64,
-        path: String
-    ) throws -> Data {
-        var bytes = [UInt8](repeating: 0, count: count)
-        var completed = 0
-        while completed < count {
-            let amount = bytes.withUnsafeMutableBytes { buffer -> Int in
-                guard let base = buffer.baseAddress else { return -1 }
-                return pread(
-                    descriptor,
-                    base.advanced(by: completed),
-                    count - completed,
-                    off_t(offset + Int64(completed))
-                )
-            }
-            if amount < 0, errno == EINTR { continue }
-            guard amount > 0 else {
-                throw VRChatCompatibleBundleIdentityError.unsafePath(
-                    path: path,
-                    reason: "pread_\(amount < 0 ? errno : EIO)"
-                )
-            }
-            completed += amount
-        }
-        return Data(bytes)
-    }
-
     static func updateSHA256(
         _ hasher: inout SHA256,
         descriptor: Int32,
@@ -553,245 +500,9 @@ enum PCVRFilesystemSafety {
     }
 }
 
-private struct PCVRNormalizedMachOIdentity: Equatable {
-    let relativePath: String
-    let uuidHex: String
-    let normalizedUnsignedSHA256: String
-    let normalizedLoadCommandsSHA256: String
-}
-
-private enum PCVRMachOIdentityInspector {
-    private static let magic64: UInt32 = 0xfeedfacf
-    private static let cpuTypeARM64: UInt32 = 0x0100000c
-    private static let loadCommandUUID: UInt32 = 0x1b
-    private static let loadCommandCodeSignature: UInt32 = 0x1d
-    private static let loadCommandSegment64: UInt32 = 0x19
-
-    static func isMachO(path: String) throws -> Bool {
-        let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-        guard descriptor >= 0 else {
-            throw VRChatCompatibleBundleIdentityError.unsafePath(
-                path: path,
-                reason: "open_\(errno)"
-            )
-        }
-        defer { _ = close(descriptor) }
-        var bytes = [UInt8](repeating: 0, count: 4)
-        let amount = bytes.withUnsafeMutableBytes { buffer in
-            read(descriptor, buffer.baseAddress, buffer.count)
-        }
-        guard amount >= 0 else {
-            throw VRChatCompatibleBundleIdentityError.unsafePath(
-                path: path,
-                reason: "read_\(errno)"
-            )
-        }
-        guard amount == 4 else { return false }
-        let magic = bytes.withUnsafeBytes {
-            $0.loadUnaligned(as: UInt32.self)
-        }
-        return [
-            UInt32(0xfeedface), UInt32(0xcefaedfe), magic64,
-            UInt32(0xcffaedfe), UInt32(0xbebafeca),
-            UInt32(0xcafebabe), UInt32(0xbfbafeca), UInt32(0xcafebabf)
-        ].contains(magic)
-    }
-
-    static func identity(
-        path: String,
-        relativePath: String,
-        expectedUID: uid_t,
-        requireExecutable: Bool
-    ) throws -> PCVRNormalizedMachOIdentity {
-        let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-        guard descriptor >= 0 else {
-            throw VRChatCompatibleBundleIdentityError.unsafePath(
-                path: path,
-                reason: "open_\(errno)"
-            )
-        }
-        defer { _ = close(descriptor) }
-
-        var before = stat()
-        guard fstat(descriptor, &before) == 0 else {
-            throw VRChatCompatibleBundleIdentityError.unsafePath(
-                path: path,
-                reason: "fstat_\(errno)"
-            )
-        }
-        let hasACL = try PCVRFilesystemSafety.descriptorHasExtendedACL(
-            descriptor,
-            path: path,
-            expectedMetadata: before
-        )
-        guard PCVRFilesystemSafety.metadataIsSafe(
-            before,
-            expectedUID: expectedUID,
-            expectedType: S_IFREG,
-            hasExtendedACL: hasACL,
-            requiresSingleLink: true
-        ), !requireExecutable || before.st_mode & S_IXUSR != 0,
-           before.st_size >= 32 else {
-            throw VRChatCompatibleBundleIdentityError.unsafePath(
-                path: path,
-                reason: "unsafe_macho_metadata"
-            )
-        }
-
-        let header = try PCVRFilesystemSafety.readExact(
-            descriptor: descriptor,
-            count: 32,
-            offset: 0,
-            path: path
-        )
-        guard readUInt32(header, 0) == magic64,
-              readUInt32(header, 4) == cpuTypeARM64 else {
-            throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                reason: "non_thin_arm64_macho:\(relativePath)"
-            )
-        }
-        let commandCount = Int(readUInt32(header, 16))
-        let commandsSize = Int(readUInt32(header, 20))
-        guard commandCount > 0, commandCount <= 4_096,
-              commandsSize >= 8, commandsSize <= 1_048_576,
-              UInt64(32 + commandsSize) <= UInt64(before.st_size) else {
-            throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                reason: "invalid_load_commands:\(relativePath)"
-            )
-        }
-        var commands = try PCVRFilesystemSafety.readExact(
-            descriptor: descriptor,
-            count: 32 + commandsSize,
-            offset: 0,
-            path: path
-        )
-
-        var cursor = 32
-        var uuidBytes: [UInt8]?
-        var uuidCount = 0
-        var linkeditOffset: Int?
-        var linkeditCount = 0
-        var signatureCommandOffset: Int?
-        var signatureOffset = 0
-        var signatureSize = 0
-        var signatureCount = 0
-        for _ in 0..<commandCount {
-            guard cursor + 8 <= commands.count else {
-                throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                    reason: "truncated_load_command:\(relativePath)"
-                )
-            }
-            let command = readUInt32(commands, cursor)
-            let size = Int(readUInt32(commands, cursor + 4))
-            guard size >= 8, cursor + size <= commands.count else {
-                throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                    reason: "invalid_load_command:\(relativePath)"
-                )
-            }
-            if command == loadCommandUUID {
-                guard size == 24 else {
-                    throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                        reason: "invalid_uuid_command:\(relativePath)"
-                    )
-                }
-                uuidBytes = [UInt8](commands[(cursor + 8)..<(cursor + 24)])
-                uuidCount += 1
-            } else if command == loadCommandCodeSignature {
-                guard size == 16 else {
-                    throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                        reason: "invalid_signature_command:\(relativePath)"
-                    )
-                }
-                signatureCommandOffset = cursor
-                signatureOffset = Int(readUInt32(commands, cursor + 8))
-                signatureSize = Int(readUInt32(commands, cursor + 12))
-                signatureCount += 1
-            } else if command == loadCommandSegment64, size >= 72 {
-                let nameBytes = commands[(cursor + 8)..<(cursor + 24)]
-                let name = String(
-                    decoding: nameBytes.prefix { $0 != 0 },
-                    as: UTF8.self
-                )
-                if name == "__LINKEDIT" {
-                    linkeditOffset = cursor
-                    linkeditCount += 1
-                }
-            }
-            cursor += size
-        }
-
-        guard cursor == commands.count,
-              uuidCount == 1,
-              let uuidBytes,
-              signatureCount == 1,
-              let signatureCommandOffset,
-              signatureSize > 0,
-              signatureOffset >= commands.count,
-              signatureOffset <= Int(before.st_size),
-              signatureSize <= Int(before.st_size) - signatureOffset,
-              linkeditCount == 1,
-              let linkeditOffset else {
-            throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                reason: "incomplete_macho_identity:\(relativePath)"
-            )
-        }
-
-        zero(&commands, at: signatureCommandOffset + 8, count: 8)
-        zero(&commands, at: linkeditOffset + 32, count: 8)
-        zero(&commands, at: linkeditOffset + 48, count: 8)
-
-        var loadHasher = SHA256()
-        loadHasher.update(data: commands)
-        var unsignedHasher = SHA256()
-        unsignedHasher.update(data: commands)
-        try PCVRFilesystemSafety.updateSHA256(
-            &unsignedHasher,
-            descriptor: descriptor,
-            offset: UInt64(commands.count),
-            length: UInt64(signatureOffset - commands.count),
-            path: path
-        )
-        let signatureEnd = signatureOffset + signatureSize
-        try PCVRFilesystemSafety.updateSHA256(
-            &unsignedHasher,
-            descriptor: descriptor,
-            offset: UInt64(signatureEnd),
-            length: UInt64(before.st_size) - UInt64(signatureEnd),
-            path: path
-        )
-
-        var after = stat()
-        guard fstat(descriptor, &after) == 0,
-              PCVRFilesystemSafety.statIsUnchanged(before, after) else {
-            throw VRChatCompatibleBundleIdentityError.unsafePath(
-                path: path,
-                reason: "macho_changed_during_read"
-            )
-        }
-        return PCVRNormalizedMachOIdentity(
-            relativePath: relativePath,
-            uuidHex: uuidBytes.map { String(format: "%02x", $0) }.joined(),
-            normalizedUnsignedSHA256:
-                PCVRFilesystemSafety.hex(unsignedHasher.finalize()),
-            normalizedLoadCommandsSHA256:
-                PCVRFilesystemSafety.hex(loadHasher.finalize())
-        )
-    }
-
-    private static func readUInt32(_ data: Data, _ offset: Int) -> UInt32 {
-        data.withUnsafeBytes {
-            $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
-        }
-    }
-
-    private static func zero(_ data: inout Data, at offset: Int, count: Int) {
-        data.replaceSubrange(
-            offset..<(offset + count),
-            with: repeatElement(UInt8(0), count: count)
-        )
-    }
-}
-
+/// Validates only the fixed patched-library location and executable metadata.
+/// VRChat version, signature, UUID, entitlements, and Mach-O contents are not
+/// compatibility gates; the controller binds the exact executable path.
 struct SystemVRChatCompatibleBundleIdentityValidator:
     VRChatCompatibleBundleIdentityValidating {
 
@@ -823,78 +534,36 @@ struct SystemVRChatCompatibleBundleIdentityValidator:
         let expectedURL = VRChatMemoryPolicyManifest.expectedAppURL(
             homeDirectory: homeDirectory
         )
-        let infoURL = expectedURL.appendingPathComponent("Info.plist")
-        let infoData = try Data(contentsOf: infoURL)
-        guard let info = try PropertyListSerialization.propertyList(
-            from: infoData,
-            format: nil
-        ) as? [String: Any],
-              info["CFBundleIdentifier"] as? String
-                == VRChatMemoryPolicyManifest.bundleIdentifier,
-              info["CFBundleShortVersionString"] as? String
-                == VRChatMemoryPolicyManifest.expectedShortVersion,
-              info["CFBundleVersion"] as? String
-                == VRChatMemoryPolicyManifest.expectedBuildVersion,
-              info["CFBundleExecutable"] as? String
-                == VRChatMemoryPolicyManifest.expectedExecutableName else {
-            throw VRChatCompatibleBundleIdentityError.invalidBundleMetadata(
-                reason: "Info.plist"
-            )
-        }
         let executableURL = expectedURL.appendingPathComponent(
             VRChatMemoryPolicyManifest.expectedExecutableName
         )
-
-        try verifyStrictCodeSignature(appURL: expectedURL)
-        let entitlementsSHA256 = try canonicalEntitlementsSHA256(
-            executableURL: executableURL,
-            homeDirectory: homeDirectory
+        var executableMetadata = stat()
+        guard lstat(executableURL.path, &executableMetadata) == 0 else {
+            throw VRChatCompatibleBundleIdentityError.unsafePath(
+                path: executableURL.path,
+                reason: "lstat_\(errno)"
+            )
+        }
+        let executableACL = try PCVRFilesystemSafety.pathHasExtendedACL(
+            executableURL.path,
+            expectedMetadata: executableMetadata
         )
-        guard entitlementsSHA256 ==
-                "5897ec7c1e895de492424821a7b5dbe4bea2552345244c20029a4083a4bb01f4" else {
-            throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                reason: "entitlements_sha256"
-            )
-        }
-
-        let identities = try enumerateMachOIdentities(
-            appURL: expectedURL,
-            expectedUID: expectedUID
-        )
-        guard identities.count == VRChatMemoryPolicyManifest.reviewedMachOCount else {
-            throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                reason: "macho_count_\(identities.count)"
-            )
-        }
-        let digest = allowlistSHA256(identities)
-        guard digest == VRChatMemoryPolicyManifest.reviewedMachOAllowlistSHA256 else {
-            throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                reason: "macho_allowlist_sha256"
-            )
-        }
-        guard let main = identities.first(where: {
-            $0.relativePath == VRChatMemoryPolicyManifest.expectedExecutableName
-        }),
-              main.uuidHex == VRChatMemoryPolicyManifest.reviewedMainUUID,
-              main.normalizedUnsignedSHA256 ==
-                VRChatMemoryPolicyManifest.reviewedMainNormalizedUnsignedSHA256,
-              main.normalizedLoadCommandsSHA256 ==
-                VRChatMemoryPolicyManifest.reviewedMainNormalizedLoadCommandsSHA256 else {
-            throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                reason: "main_composite_identity"
+        guard PCVRFilesystemSafety.metadataIsSafe(
+            executableMetadata,
+            expectedUID: expectedUID,
+            expectedType: S_IFREG,
+            hasExtendedACL: executableACL,
+            requiresSingleLink: true
+        ), executableMetadata.st_mode & S_IXUSR != 0 else {
+            throw VRChatCompatibleBundleIdentityError.unsafePath(
+                path: executableURL.path,
+                reason: "unsafe_executable_metadata"
             )
         }
 
         return VRChatCompatibleBundleIdentity(
             appURL: expectedURL,
-            executableURL: executableURL,
-            machoCount: identities.count,
-            machoAllowlistSHA256: digest,
-            mainUUID: main.uuidHex,
-            mainNormalizedUnsignedSHA256: main.normalizedUnsignedSHA256,
-            mainNormalizedLoadCommandsSHA256:
-                main.normalizedLoadCommandsSHA256,
-            entitlementsSHA256: entitlementsSHA256
+            executableURL: executableURL
         )
     }
 
@@ -925,13 +594,13 @@ struct SystemVRChatCompatibleBundleIdentityValidator:
             normalizedHome.appendingPathComponent("Library").path,
             normalizedHome.appendingPathComponent("Library/Containers").path,
             normalizedHome.appendingPathComponent(
-                "Library/Containers/"
-                    + PlayCoverVRChatBuildIdentity.containerDirectoryName
+                "Library/Containers/" +
+                    PlayCoverVRChatBuildIdentity.containerDirectoryName
             ).path,
             normalizedHome.appendingPathComponent(
-                "Library/Containers/"
-                    + PlayCoverVRChatBuildIdentity.containerDirectoryName
-                    + "/Applications"
+                "Library/Containers/" +
+                    PlayCoverVRChatBuildIdentity.containerDirectoryName +
+                    "/Applications"
             ).path,
             expectedURL.path
         ]
@@ -960,218 +629,6 @@ struct SystemVRChatCompatibleBundleIdentityValidator:
                 )
             }
         }
-    }
-
-    private func verifyStrictCodeSignature(appURL: URL) throws {
-        var staticCode: SecStaticCode?
-        let createStatus = SecStaticCodeCreateWithPath(
-            appURL as CFURL,
-            SecCSFlags(),
-            &staticCode
-        )
-        guard createStatus == errSecSuccess, let staticCode else {
-            throw VRChatCompatibleBundleIdentityError
-                .invalidCodeSignature(createStatus)
-        }
-        let status = SecStaticCodeCheckValidity(
-            staticCode,
-            SecCSFlags(
-                rawValue: kSecCSStrictValidate |
-                    kSecCSCheckAllArchitectures |
-                    kSecCSCheckNestedCode
-            ),
-            nil
-        )
-        guard status == errSecSuccess else {
-            throw VRChatCompatibleBundleIdentityError.invalidCodeSignature(status)
-        }
-    }
-
-    private func canonicalEntitlementsSHA256(
-        executableURL: URL,
-        homeDirectory: URL
-    ) throws -> String {
-        var staticCode: SecStaticCode?
-        let createStatus = SecStaticCodeCreateWithPath(
-            executableURL as CFURL,
-            SecCSFlags(),
-            &staticCode
-        )
-        guard createStatus == errSecSuccess, let staticCode else {
-            throw VRChatCompatibleBundleIdentityError
-                .invalidCodeSignature(createStatus)
-        }
-        var signingInfo: CFDictionary?
-        let infoStatus = SecCodeCopySigningInformation(
-            staticCode,
-            SecCSFlags(rawValue: kSecCSSigningInformation),
-            &signingInfo
-        )
-        guard infoStatus == errSecSuccess,
-              let info = signingInfo as? [String: Any],
-              let entitlements = info[kSecCodeInfoEntitlementsDict as String]
-                as? [String: Any] else {
-            throw VRChatCompatibleBundleIdentityError
-                .invalidCodeSignature(infoStatus)
-        }
-
-        let home = homeDirectory.standardizedFileURL.path
-        var canonical = Data("PCVR-ENTITLEMENTS/1\n".utf8)
-        let keys = entitlements.keys.sorted {
-            Array($0.utf8).lexicographicallyPrecedes(Array($1.utf8))
-        }
-        var arrayCount = 0
-        for key in keys {
-            guard let value = entitlements[key] else { continue }
-            let keyBytes = Data(key.utf8)
-            if CFGetTypeID(value as CFTypeRef) == CFBooleanGetTypeID() {
-                guard CFBooleanGetValue((value as! CFBoolean)) else {
-                    throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                        reason: "false_entitlement"
-                    )
-                }
-                canonical.append(contentsOf: "B \(keyBytes.count) ".utf8)
-                canonical.append(keyBytes)
-                canonical.append(0x0a)
-                continue
-            }
-            guard let values = value as? [String] else {
-                throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                    reason: "unsupported_entitlement_type"
-                )
-            }
-            arrayCount += 1
-            guard arrayCount == 1 else {
-                throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                    reason: "multiple_entitlement_arrays"
-                )
-            }
-            canonical.append(
-                contentsOf: "A \(keyBytes.count) ".utf8
-            )
-            canonical.append(keyBytes)
-            canonical.append(contentsOf: " \(values.count)\n".utf8)
-            for value in values {
-                let normalized = value.replacingOccurrences(
-                    of: home,
-                    with: "@CONSOLE_HOME@"
-                )
-                let bytes = Data(normalized.utf8)
-                canonical.append(contentsOf: "S \(bytes.count) ".utf8)
-                canonical.append(bytes)
-                canonical.append(0x0a)
-            }
-        }
-        guard arrayCount == 1 else {
-            throw VRChatCompatibleBundleIdentityError.identityMismatch(
-                reason: "missing_entitlement_array"
-            )
-        }
-        return PCVRFilesystemSafety.hex(SHA256.hash(data: canonical))
-    }
-
-    private func enumerateMachOIdentities(
-        appURL: URL,
-        expectedUID: uid_t
-    ) throws -> [PCVRNormalizedMachOIdentity] {
-        let root = appURL.path
-        let rootPrefix = root + "/"
-        var directories = [root]
-        var identities: [PCVRNormalizedMachOIdentity] = []
-        while let directory = directories.popLast() {
-            let children = try FileManager.default.contentsOfDirectory(
-                atPath: directory
-            )
-            for name in children {
-                guard name != ".", name != "..", !name.contains("/") else {
-                    throw VRChatCompatibleBundleIdentityError.unsafePath(
-                        path: directory,
-                        reason: "invalid_directory_entry"
-                    )
-                }
-                let path = (directory as NSString)
-                    .appendingPathComponent(name)
-                var metadata = stat()
-                guard lstat(path, &metadata) == 0 else {
-                    throw VRChatCompatibleBundleIdentityError.unsafePath(
-                        path: path,
-                        reason: "lstat_\(errno)"
-                    )
-                }
-                let hasACL = try PCVRFilesystemSafety.pathHasExtendedACL(
-                    path,
-                    expectedMetadata: metadata
-                )
-                let type = metadata.st_mode & S_IFMT
-                if type == S_IFDIR {
-                    guard PCVRFilesystemSafety.metadataIsSafe(
-                        metadata,
-                        expectedUID: expectedUID,
-                        expectedType: S_IFDIR,
-                        hasExtendedACL: hasACL,
-                        requiresSingleLink: false
-                    ) else {
-                        throw VRChatCompatibleBundleIdentityError.unsafePath(
-                            path: path,
-                            reason: "unsafe_directory_metadata"
-                        )
-                    }
-                    directories.append(path)
-                    continue
-                }
-                guard type == S_IFREG,
-                      PCVRFilesystemSafety.metadataIsSafe(
-                        metadata,
-                        expectedUID: expectedUID,
-                        expectedType: S_IFREG,
-                        hasExtendedACL: hasACL,
-                        requiresSingleLink: true
-                      ) else {
-                    throw VRChatCompatibleBundleIdentityError.unsafePath(
-                        path: path,
-                        reason: "unsafe_file_metadata"
-                    )
-                }
-                guard try PCVRMachOIdentityInspector.isMachO(path: path) else {
-                    continue
-                }
-                guard path.hasPrefix(rootPrefix) else {
-                    throw VRChatCompatibleBundleIdentityError.unsafePath(
-                        path: path,
-                        reason: "outside_bundle"
-                    )
-                }
-                let relative = String(path.dropFirst(rootPrefix.count))
-                identities.append(try PCVRMachOIdentityInspector.identity(
-                    path: path,
-                    relativePath: relative,
-                    expectedUID: expectedUID,
-                    requireExecutable:
-                        relative == VRChatMemoryPolicyManifest.expectedExecutableName
-                ))
-            }
-        }
-        return identities.sorted {
-            Array($0.relativePath.utf8).lexicographicallyPrecedes(
-                Array($1.relativePath.utf8)
-            )
-        }
-    }
-
-    private func allowlistSHA256(
-        _ identities: [PCVRNormalizedMachOIdentity]
-    ) -> String {
-        var hasher = SHA256()
-        hasher.update(data: Data("PCVR-MACHO-ALLOWLIST/1\n".utf8))
-        for identity in identities {
-            let line = "M \(identity.relativePath.utf8.count) "
-                + identity.relativePath + " "
-                + identity.uuidHex + " "
-                + identity.normalizedUnsignedSHA256 + " "
-                + identity.normalizedLoadCommandsSHA256 + "\n"
-            hasher.update(data: Data(line.utf8))
-        }
-        return PCVRFilesystemSafety.hex(hasher.finalize())
     }
 }
 
@@ -1698,23 +1155,15 @@ enum VRChatMemoryPolicyFormalAuthorization {
     static let isAvailable = false
 }
 
-enum VRChatReadOnlyLaunchError: LocalizedError, Equatable {
-    case importRequiresCompatibleCopy
-    case repairRequired(reason: String)
+enum VRChatImportError: LocalizedError, Equatable {
+    case patchedCopyRequired
 
     var errorDescription: String? {
         switch self {
-        case .importRequiresCompatibleCopy:
+        case .patchedCopyRequired:
             return NSLocalizedString(
                 "error.vrchatReadOnly.importRequired", comment: ""
             )
-        case let .repairRequired(reason):
-            let reasonDescription = NSLocalizedString(
-                "error.vrchatReadOnly.reason.\(reason)", comment: ""
-            )
-            return String(format: NSLocalizedString(
-                "error.vrchatReadOnly.repairRequired", comment: ""
-            ), reasonDescription)
         }
     }
 }

@@ -1,7 +1,6 @@
 #include <bsm/libbsm.h>
-#include "pcvr-bundle-identity.h"
 #include "pcvr-memory-policy.h"
-#include "pcvr-runtime-images.h"
+#include "pcvr-bundle-identity.h"
 #include "pcvr-status-protocol.h"
 #include "pcvr-target.h"
 #include <errno.h>
@@ -108,19 +107,9 @@ enum {
 #ifndef POLICY_REQUIRE_MANAGED
 #define POLICY_REQUIRE_MANAGED 1
 #endif
-#ifndef POLICY_TARGET_UUID_BYTES
-#define POLICY_TARGET_UUID_BYTES \
-    0x41, 0xca, 0xdb, 0x30, 0xcc, 0xef, 0x3b, 0x6c, \
-    0x8a, 0x1d, 0x23, 0x7c, 0xe5, 0xd6, 0x4c, 0x42
-#endif
-
 static const int target_wait_seconds = 300;
-static const uint8_t expected_executable_uuid[16] = {
-    POLICY_TARGET_UUID_BYTES
-};
 
 static pcvr_target_t target = {0};
-static pcvr_reviewed_bundle_t reviewed_bundle = {0};
 static pcvr_status_server_t status_server = {.listener_descriptor = -1};
 
 #define target_path (target.executable_path)
@@ -214,26 +203,33 @@ static int acquire_singleton_lock(void) {
 }
 
 static int verify_target_file(struct stat *target_stat) {
-    if (pcvr_verify_reviewed_bundle(&target, &reviewed_bundle) != 0) {
-        fprintf(stderr,
-                "Target bundle failed the reviewed cross-user identity gate: "
-                "%s\n",
-                target_path);
+    /* Bind to the exact executable path in the independent PlayCover
+     * container, but do not require a particular VRChat version, signature,
+     * UUID, or Mach-O image set. */
+    char app_root[PATH_MAX] = {0};
+    if (snprintf(app_root, sizeof(app_root), "%s", target_path) < 0) {
+        errno = EINVAL;
         return -1;
     }
-    size_t main_index = 0;
-    if (pcvr_reviewed_macho_index_for_absolute_path(
-            &reviewed_bundle, target_path, &main_index) != 1) {
+    char *last_separator = strrchr(app_root, '/');
+    if (last_separator == NULL || last_separator == app_root) {
+        errno = EINVAL;
+        return -1;
+    }
+    *last_separator = '\0';
+    if (pcvr_verify_safe_directory_chain(target.home_path, app_root,
+                                         target.uid) != 0) {
+        return -1;
+    }
+    if (lstat(target_path, target_stat) != 0 ||
+        !S_ISREG(target_stat->st_mode) || target_stat->st_uid != target.uid ||
+        target_stat->st_gid != target.gid ||
+        (target_stat->st_mode & (S_IWGRP | S_IWOTH)) != 0 ||
+        target_stat->st_nlink != 1 || target_stat->st_flags != 0 ||
+        (target_stat->st_mode & S_IXUSR) == 0) {
         errno = EPERM;
         return -1;
     }
-    const struct stat *reviewed_stat =
-        pcvr_reviewed_macho_stat(&reviewed_bundle, main_index);
-    if (reviewed_stat == NULL) {
-        errno = EPERM;
-        return -1;
-    }
-    *target_stat = *reviewed_stat;
     return 0;
 }
 
@@ -290,9 +286,7 @@ static int read_identity_bound_path(const process_identity_t *identity,
 static int verify_process(const process_identity_t *expected, uid_t expected_uid) {
     process_identity_t current = {0};
     if (read_identity(expected->pid, &current) != 0 ||
-        !same_identity(expected, &current) || current.uid != expected_uid ||
-        memcmp(current.executable_uuid, expected_executable_uuid,
-               sizeof(expected_executable_uuid)) != 0) {
+        !same_identity(expected, &current) || current.uid != expected_uid) {
         return -1;
     }
     char path[PROC_PIDPATHINFO_MAXSIZE] = {0};
@@ -312,10 +306,7 @@ static int target_state(const process_identity_t *expected,
     if (!same_task(expected, &current)) {
         return TARGET_GONE;
     }
-    if (current.uid != expected_uid ||
-        !same_identity(expected, &current) ||
-        memcmp(current.executable_uuid, expected_executable_uuid,
-               sizeof(expected_executable_uuid)) != 0) {
+    if (current.uid != expected_uid || !same_identity(expected, &current)) {
         return TARGET_CHANGED;
     }
 
@@ -388,10 +379,7 @@ static int find_target(process_identity_t *identity, uid_t expected_uid) {
         char path[PROC_PIDPATHINFO_MAXSIZE] = {0};
         if (read_identity(pids[index], &match) == 0 &&
             read_identity_bound_path(&match, path) == 0 &&
-            strcmp(path, target_path) == 0 &&
-            match.uid == expected_uid &&
-            memcmp(match.executable_uuid, expected_executable_uuid,
-                   sizeof(expected_executable_uuid)) == 0) {
+            strcmp(path, target_path) == 0 && match.uid == expected_uid) {
             *identity = match;
             matches++;
         }
@@ -1007,7 +995,7 @@ int main(int argc, char **argv) {
     }
     fprintf(stderr,
             "controller_pid=%d ready=1\n"
-            "Verified host capability and target composite identity. Selected %u GiB "
+            "Verified host capability and target path. Selected %u GiB "
             "of a %u GiB "
             "safe maximum. Waiting up to %d seconds for:\n%s\n",
             getpid(), policy.selected_gib,
@@ -1121,8 +1109,7 @@ int main(int argc, char **argv) {
         return 74;
     }
 
-    if (pcvr_reviewed_bundle_disk_is_unchanged(&reviewed_bundle) != 1 ||
-        verify_process(&identity, target_stat.st_uid) != 0) {
+    if (verify_process(&identity, target_stat.st_uid) != 0) {
         fprintf(stderr, "Target identity changed before policy application.\n");
         publish_failed("target_identity");
         fail_closed(&identity, &watchdog);
@@ -1148,17 +1135,12 @@ int main(int argc, char **argv) {
         fail_closed(&identity, &watchdog);
         return 70;
     }
-    fprintf(stderr, "Detected the verified process %.1f ms after start.\n",
+    fprintf(stderr, "Detected the target process %.1f ms after start.\n",
             (double)launch_delay_us / 1000.0);
 
-    if (target_state(&identity, target_stat.st_uid) != TARGET_EXACT ||
-        pcvr_verify_runtime_images_until_ready(identity.pid, &reviewed_bundle,
-                                               1, 2000U) != 0 ||
-        target_state(&identity, target_stat.st_uid) != TARGET_EXACT) {
-        fprintf(stderr,
-                "The target's executable image set is not fully reviewed; "
-                "failing closed.\n");
-        publish_failed("runtime_images");
+    if (target_state(&identity, target_stat.st_uid) != TARGET_EXACT) {
+        fprintf(stderr, "The target process changed before policy application.\n");
+        publish_failed("target_identity");
         fail_closed(&identity, &watchdog);
         return 67;
     }
@@ -1218,12 +1200,9 @@ int main(int argc, char **argv) {
         return 1;
     }
     if (verify_process(&identity, target_stat.st_uid) != 0 ||
-        pcvr_verify_runtime_images(identity.pid, &reviewed_bundle, 1) != 0 ||
         target_state(&identity, target_stat.st_uid) != TARGET_EXACT) {
-        fprintf(stderr,
-                "Target identity or executable image set changed after policy "
-                "application.\n");
-        publish_failed("runtime_images");
+        fprintf(stderr, "Target process changed after policy application.\n");
+        publish_failed("target_identity");
         fail_closed(&identity, &watchdog);
         return 67;
     }
@@ -1437,13 +1416,9 @@ int main(int argc, char **argv) {
         if (last_safety_check == 0 || now - last_safety_check >= 1000U) {
             int require_managed_now =
                 POLICY_REQUIRE_MANAGED && elapsed_milliseconds >= 5000U;
-            if (target_state(&identity, target_stat.st_uid) != TARGET_EXACT ||
-                pcvr_verify_runtime_images(identity.pid,
-                                           &reviewed_bundle, 1) != 0 ||
-                target_state(&identity, target_stat.st_uid) != TARGET_EXACT) {
-                fprintf(stderr,
-                        "Periodic executable image validation failed.\n");
-                publish_failed("runtime_images");
+            if (target_state(&identity, target_stat.st_uid) != TARGET_EXACT) {
+                fprintf(stderr, "Periodic target process validation failed.\n");
+                publish_failed("target_identity");
                 fail_closed(&identity, &watchdog);
                 return 67;
             }

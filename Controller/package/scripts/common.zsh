@@ -19,9 +19,9 @@ uninstall_journal=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-pol
 install_journal=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.install
 operation_claim=/private/var/db/io.github.northstarxyzz.pcvrpatcher.memory-policy.operation
 
-current_controller_sha=24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73
-current_runner_sha=49f7cc361b072891182144e0f8141412b192c2647c0740c7febc5483b01337dd
-current_attestation_sha=45b471725262b670ede72a398bc8b6c34b9ea21eac1859ad9e7c849248b66d9b
+current_controller_sha=fa53e940f40ec833fcf16a06ea3e81fa27fb89f980426cf710e8700867cd74c2
+current_runner_sha=a642a0c298c046fe54321971b09ef9a83a1fd9379ec6b1f02ad264630d9e5225
+current_attestation_sha=b7123bc37ce5279e222d47b63c400be42f1137a4e6d94dae8798ffc8eb263672
 install_journal_sha=2c4dcac138decf2d452fa661cf2542dc145451e01905cd7c05821fd0aec9dcd1
 install_journal_contents=$'PCVR-INSTALL/1\npackageIdentifier=io.github.northstarxyzz.pcvrpatcher.memory-policy\npackageVersion=0.1.0\ncontrollerBuildID=capability-vrchat-2026.2.30300-1365-r7\n'
 operation_claim_sha=7fbc5571dfedc9073d71607562a97c1ea0c0435e6783f1818dcdcc40e8f23eed
@@ -51,6 +51,12 @@ r6_pre_provenance_runner_sha=039047ea409a4cd5b27f142b657f239ec99bbed6e2ee1a866bf
 r6_installed_controller_sha=824c993abf60879472aa448ac89b59816ea232ef81d17850887aaa151aa7254c
 r6_installed_runner_sha=26d2e2776f17707d7ca15469bf00890b547210b8416a9b9ef39144032764e9af
 r6_installed_attestation_sha=4623932fdd80005cc436c9a02f55cd6d2e7186294ce7afc645338460c7dc7bc5
+# This is the exact r7 package shipped immediately before the current r7
+# payload. It is a one-time, paired upgrade path; arbitrary root artifacts
+# remain rejected.
+r7_previous_controller_sha=24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73
+r7_previous_runner_sha=49f7cc361b072891182144e0f8141412b192c2647c0740c7febc5483b01337dd
+r7_previous_attestation_sha=45b471725262b670ede72a398bc8b6c34b9ea21eac1859ad9e7c849248b66d9b
 
 fail() {
     print -u2 -- "$1"
@@ -392,15 +398,18 @@ classify_journaled_install_state() {
             "$r5_controller_sha:$r5_runner_sha"|"$r3_controller_sha:$r3_runner_sha"|\
             "$r6_previous_controller_sha:$r6_previous_runner_sha"|\
             "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha"|\
-            "$r6_installed_controller_sha:$r6_installed_runner_sha") ;;
-            *) print -- reject; return ;;
+            "$r6_installed_controller_sha:$r6_installed_runner_sha"|\
+            "$r7_previous_controller_sha:$r7_previous_runner_sha") ;;
+        *) print -- reject; return ;;
         esac
         if [[ "$quarantined_controller_sha:$quarantined_runner_sha" == \
               "$r6_previous_controller_sha:$r6_previous_runner_sha" || \
               "$quarantined_controller_sha:$quarantined_runner_sha" == \
               "$r6_pre_provenance_controller_sha:$r6_pre_provenance_runner_sha" || \
               "$quarantined_controller_sha:$quarantined_runner_sha" == \
-              "$r6_installed_controller_sha:$r6_installed_runner_sha" ]]; then
+              "$r6_installed_controller_sha:$r6_installed_runner_sha" || \
+              "$quarantined_controller_sha:$quarantined_runner_sha" == \
+              "$r7_previous_controller_sha:$r7_previous_runner_sha" ]]; then
             case "$final_state" in
                 0:0:1:absent::|0:0:1:current::)
                     print -- resume
@@ -435,11 +444,16 @@ classify_journaled_install_state() {
             "$r6_installed_controller_sha:$r6_installed_runner_sha:0:1:0:absent::${r6_installed_runner_sha}")
                 print -- complete-quarantine-r6-previous
                 ;;
+            "$r7_previous_controller_sha:$r7_previous_runner_sha:0:1:1:current::${r7_previous_runner_sha}"|\
+            "$r7_previous_controller_sha:$r7_previous_runner_sha:0:1:0:absent::${r7_previous_runner_sha}")
+                print -- complete-quarantine-r7-previous
+                ;;
             "$r5_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
             "$r3_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
             "$r6_previous_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
             "$r6_pre_provenance_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
-            "$r6_installed_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}")
+            "$r6_installed_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}"|\
+            "$r7_previous_controller_sha:$current_runner_sha:1:1:1:absent:${current_controller_sha}:${current_runner_sha}")
                 print -- resume
                 ;;
             *) print -- reject ;;
@@ -461,9 +475,14 @@ classify_journaled_install_state() {
         1:1:1:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha"|\
         1:1:0:absent:"$r6_pre_provenance_controller_sha":"$r6_pre_provenance_runner_sha"|\
         1:1:1:current:"$r6_installed_controller_sha":"$r6_installed_runner_sha"|\
-        1:1:1:absent:"$r6_installed_controller_sha":"$r6_installed_runner_sha")
+        1:1:1:absent:"$r6_installed_controller_sha":"$r6_installed_runner_sha"|\
+        1:1:1:current:"$r7_previous_controller_sha":"$r7_previous_runner_sha"|\
+        1:1:1:absent:"$r7_previous_controller_sha":"$r7_previous_runner_sha"|\
+        1:1:0:absent:"$r7_previous_controller_sha":"$r7_previous_runner_sha")
             if [[ "$controller_sha" == "$r6_installed_controller_sha" ]]; then
                 print -- quarantine-r6-installed
+            elif [[ "$controller_sha" == "$r7_previous_controller_sha" ]]; then
+                print -- quarantine-r7-previous
             else
                 print -- quarantine-r6-previous
             fi
@@ -516,7 +535,7 @@ verify_predecessor_controller() {
     verify_file_metadata "$1" 500
     case $(sha256 "$1") in
         "$r5_controller_sha"|"$r3_controller_sha"|"$r6_previous_controller_sha"|\
-        "$r6_installed_controller_sha") ;;
+        "$r6_installed_controller_sha"|"$r7_previous_controller_sha") ;;
         *) fail "Unknown predecessor controller quarantine." ;;
     esac
     /usr/bin/codesign --verify --strict "$1"
@@ -526,7 +545,8 @@ verify_predecessor_runner() {
     verify_file_metadata "$1" 555
     case $(sha256 "$1") in
         "$r5_runner_sha"|"$r3_runner_sha"|"$r6_previous_runner_sha"|\
-        "$r6_pre_provenance_runner_sha"|"$r6_installed_runner_sha") ;;
+        "$r6_pre_provenance_runner_sha"|"$r6_installed_runner_sha"|\
+        "$r7_previous_runner_sha") ;;
         *) fail "Unknown predecessor runner quarantine." ;;
     esac
 }

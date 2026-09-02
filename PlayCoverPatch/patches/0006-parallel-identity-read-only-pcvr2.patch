@@ -70,10 +70,10 @@ index d0b732f..490cab8 100644
                      bundleIdentifier: app.info.bundleIdentifier
 -                )
 +                ) {
-+                    // VRChat must be supplied by the Patcher as the exact
-+                    // already-compatible app bundle. The ordinary importer
-+                    // converts, rewrites, injects and signs, so it is forbidden.
-+                    throw VRChatReadOnlyLaunchError.importRequiresCompatibleCopy
++                    // Keep VRChat out of the ordinary importer, which would
++                    // convert, rewrite, inject and sign the app bundle.
++                    // This is a launch-path rule, not a version or hash check.
++                    throw VRChatImportError.patchedCopyRequired
 +                }
                  let installPlayTools: Bool
 -                if !supportsPlayTools {
@@ -150,14 +150,14 @@ index 1e9bb61..9076a1e 100644
              }
  
 +            if resolvedLaunchMode == .vrChatCompatible {
-+                try await launchVRChatReadOnly()
++                try await launchVRChatWithMemoryPolicy()
 +                return
 +            }
 +
              AppsVM.shared.fetchApps()
              if await VersionCheck.shared.checkNewVersion(myApp: self) { return }
  
-@@ -98,55 +107,57 @@ class PlayApp: BaseApp {
+@@ -98,55 +107,31 @@ class PlayApp: BaseApp {
              }
  
              if try !PlayTools.isInstalled() {
@@ -213,35 +213,10 @@ index 1e9bb61..9076a1e 100644
 -            let pasteboard = NSPasteboard.general
 -            pasteboard.clearContents()
 -            pasteboard.setString(command, forType: .string)
-+    private func launchVRChatReadOnly() async throws {
-+        guard !hasPlayTools() else {
-+            throw VRChatReadOnlyLaunchError.repairRequired(
-+                reason: "playtools_present"
-+            )
-         }
-+        guard try Entitlements.areEntitlementsValid(app: self) else {
-+            throw VRChatReadOnlyLaunchError.repairRequired(
-+                reason: "entitlements_mismatch"
-+            )
-+        }
-+        guard try isInfoPlistSigned() else {
-+            throw VRChatReadOnlyLaunchError.repairRequired(
-+                reason: "info_plist_unsigned"
-+            )
-+        }
-+        guard try isCodeSignatureValid() else {
-+            throw VRChatReadOnlyLaunchError.repairRequired(
-+                reason: "signature_invalid"
-+            )
-+        }
-+        guard try Macho.isMachoValidArch(executable) else {
-+            throw VRChatReadOnlyLaunchError.repairRequired(
-+                reason: "architecture_invalid"
-+            )
-+        }
-+
-+        // KeyCover operates only on PlayCover's independent data container.
-+        // None of the checks above or the launch below modifies the app bundle.
++    private func launchVRChatWithMemoryPolicy() async throws {
+-        }
++        // VRChat is user content. Do not inspect its version, signature,
++        // entitlements, architecture, or PlayTools before launching.
 +        await unlockKeyCover()
 +        clearDebugAffectingEnvironment()
 +        try await runVRChatCompatible()
@@ -266,28 +241,6 @@ index 1e9bb61..9076a1e 100644
                              code: 1,
                              userInfo: [NSLocalizedDescriptionKey: NSLocalizedString(
                                  "error.launchServices.noApplication", comment: ""
-@@ -418,6 +429,21 @@ extension PlayApp {
-         try Shell.run("/usr/bin/codesign", "-dv", executable.path).contains("Info.plist entries")
-     }
- 
-+    func isCodeSignatureValid() throws -> Bool {
-+        do {
-+            _ = try Shell.run(
-+                "/usr/bin/codesign",
-+                "--verify",
-+                "--deep",
-+                "--strict",
-+                url.path
-+            )
-+            return true
-+        } catch {
-+            return false
-+        }
-+    }
-+
-     func showInFinder() {
-         URL(fileURLWithPath: url.path).showInFinderAndSelectLastComponent()
-     }
 diff --git a/PlayCover/Utils/AppIntegrity.swift b/PlayCover/Utils/AppIntegrity.swift
 index 3da702f..9d147a8 100644
 --- a/PlayCover/Utils/AppIntegrity.swift

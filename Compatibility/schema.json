@@ -15,7 +15,6 @@
     "architecture",
     "playCover",
     "layout",
-    "vrChat",
     "host",
     "policy",
     "ipc"
@@ -44,64 +43,6 @@
         "originalLibraryRelativePath": { "const": "Library/Containers/io.playcover.PlayCover" },
         "patchedLibraryRelativePath": { "const": "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat" },
         "sharedVRChatContainerRelativePath": { "const": "Library/Containers/com.vrchat.mobile" }
-      }
-    },
-    "vrChat": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "bundleIdentifier",
-        "shortVersion",
-        "buildVersion",
-        "sourceAppRelativePath",
-        "destinationAppRelativePath",
-        "executableName",
-        "mainIdentity",
-        "machoAllowlist",
-        "unityFramework",
-        "appdomeLibloader"
-      ],
-      "properties": {
-        "bundleIdentifier": { "const": "com.vrchat.mobile" },
-        "shortVersion": { "const": "2026.2.30300" },
-        "buildVersion": { "const": "1365" },
-        "sourceAppRelativePath": {
-          "const": "Library/Containers/io.playcover.PlayCover/Applications/com.vrchat.mobile.app"
-        },
-        "destinationAppRelativePath": {
-          "const": "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat/Applications/com.vrchat.mobile.app"
-        },
-        "executableName": { "const": "VRChat" },
-        "mainIdentity": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "executableUUID",
-            "normalizedUnsignedSHA256",
-            "normalizedLoadCommandsSHA256",
-            "normalizedEntitlementsSHA256"
-          ],
-          "properties": {
-            "executableUUID": { "$ref": "#/$defs/uuid" },
-            "normalizedUnsignedSHA256": { "$ref": "#/$defs/sha256" },
-            "normalizedLoadCommandsSHA256": { "$ref": "#/$defs/sha256" },
-            "normalizedEntitlementsSHA256": { "$ref": "#/$defs/sha256" }
-          }
-        },
-        "machoAllowlist": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["format", "digestSHA256", "count"],
-          "properties": {
-            "format": { "const": "PCVR-MACHO-ALLOWLIST/1" },
-            "digestSHA256": {
-              "const": "60df094badbe3fb9e8f051f07d2a38a54cfb7bd592c3cf62a69e355050ec5109"
-            },
-            "count": { "const": 46 }
-          }
-        },
-        "unityFramework": { "$ref": "#/$defs/nestedExecutableIdentity" },
-        "appdomeLibloader": { "$ref": "#/$defs/nestedExecutableIdentity" }
       }
     },
     "host": {
@@ -261,16 +202,6 @@
         "gid": { "const": 0 },
         "mode": { "type": "string", "pattern": "^0[0-7]{3}$" },
         "linkCount": { "const": 1 }
-      }
-    },
-    "nestedExecutableIdentity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["relativePath", "executableSHA256", "executableUUID"],
-      "properties": {
-        "relativePath": { "type": "string", "minLength": 1 },
-        "executableSHA256": { "$ref": "#/$defs/sha256" },
-        "executableUUID": { "$ref": "#/$defs/uuid" }
       }
     }
   }

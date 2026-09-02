@@ -98,8 +98,8 @@ private struct LegacyPatchReceiptV3: Codable, Sendable {
     let installedAt: Date
     let originalTreeSHA256: String
     let patchedTreeSHA256: String
-    let importedVRChatTreeSHA256: String
-    let configurationSHA256: String
+    let importedVRChatTreeSHA256: String?
+    let configurationSHA256: String?
     let importStrategy: VRChatImportStrategy
 }
 
@@ -119,7 +119,6 @@ public actor PatcherEngine {
     private let manifest: CompatibilityManifest
     private let paths: PatcherPaths
     private let verifier: any TreeVerifying
-    private let vrChatVerifier: any VRChatVerifying
     private let importer: any VRChatTreeImporting
     private let configurationMigrator: any VRChatConfigurationMigrating
     private let runtimeProvider: any RuntimeProviding
@@ -131,7 +130,6 @@ public actor PatcherEngine {
         manifest: CompatibilityManifest,
         paths: PatcherPaths,
         verifier: any TreeVerifying = AppTreeVerifier(),
-        vrChatVerifier: any VRChatVerifying = VRChatAppVerifier(),
         importer: any VRChatTreeImporting = CloneFirstVRChatImporter(),
         configurationMigrator: any VRChatConfigurationMigrating =
             SelectiveVRChatConfigurationMigrator(),
@@ -145,7 +143,6 @@ public actor PatcherEngine {
         self.manifest = manifest
         self.paths = paths
         self.verifier = verifier
-        self.vrChatVerifier = vrChatVerifier
         self.importer = importer
         self.configurationMigrator = configurationMigrator
         self.runtimeProvider = runtimeProvider
@@ -170,7 +167,7 @@ public actor PatcherEngine {
 
     public func createPatchedCopy() async throws -> OperationResult {
         try requireEnvironmentReady()
-        let source = try requireOriginalVRChat()
+        try requireOriginalVRChat()
         _ = try requireOriginalConfiguration()
         _ = try requireOriginalPlayCover()
         let patchedIdentity = try requirePayload()
@@ -181,12 +178,7 @@ public actor PatcherEngine {
 
         return try await withExclusiveTransaction {
             try requireEnvironmentReady()
-            let sourceAgain = try requireOriginalVRChat()
-            guard sourceAgain.treeSHA256 == source.treeSHA256 else {
-                throw PatcherError.unknownModification(
-                    "the original VRChat tree changed during preflight"
-                )
-            }
+            try requireOriginalVRChat()
             _ = try requireOriginalConfiguration()
             _ = try requireOriginalPlayCover()
             try requireIdentity(
@@ -206,14 +198,13 @@ public actor PatcherEngine {
             try writeJournal(journal)
             let result = try await self.completeCreate(
                 journal: &journal,
-                sourceIdentity: sourceAgain,
                 patchedIdentity: patchedIdentity
             )
             return OperationResult(
                 operation: .createPatchedCopy,
                 inspection: try await self.inspectIgnoringLock(),
                 importedVRChatURL: vrChatDestinationURL,
-                importStrategy: result.strategy
+                importStrategy: result
             )
         }
     }
@@ -230,12 +221,11 @@ public actor PatcherEngine {
                     try await self.recoverRemove(journal)
                 } else if journal.operation == .createPatchedCopy ||
                             journal.operation == .repair {
-                    let source = try requireOriginalVRChat()
+                    try requireOriginalVRChat()
                     _ = try requireOriginalConfiguration()
                     let patchedIdentity = try requirePayload()
                     _ = try await self.completeCreate(
                         journal: &journal,
-                        sourceIdentity: source,
                         patchedIdentity: patchedIdentity
                     )
                 } else {
@@ -504,24 +494,10 @@ public actor PatcherEngine {
         guard nodeExists(vrChatSourceURL) else {
             return inspection(.vrChatMissing(vrChatSourceURL))
         }
-        if isSymbolicLink(vrChatSourceURL) {
-            return inspection(.unknownModification(
-                "the original VRChat app is a symlink"
-            ))
-        }
         do {
-            try VRChatArtifactScanner.verifyClean(vrChatSourceURL)
+            try requireOriginalVRChat()
         } catch {
             return inspection(.unknownModification(error.localizedDescription))
-        }
-        let source = try vrChatVerifier.identity(
-            of: vrChatSourceURL,
-            expected: manifest.vrChat
-        )
-        if let mismatch = source.mismatch(from: manifest.vrChat) {
-            return inspection(.unknownModification(
-                "the original VRChat installation is unsupported: \(mismatch)"
-            ))
         }
         do {
             _ = try requireOriginalConfiguration()
@@ -529,31 +505,14 @@ public actor PatcherEngine {
             return inspection(.unknownModification(error.localizedDescription))
         }
         if nodeExists(vrChatDestinationURL) {
-            if isSymbolicLink(vrChatDestinationURL) {
-                return inspection(.unknownModification(
-                    "the independent VRChat copy is a symlink"
-                ))
-            }
             do {
-                try VRChatArtifactScanner.verifyClean(vrChatDestinationURL)
+                try requireImportedVRChat()
+                try CloneFirstVRChatImporter.rejectHardLinks(
+                    from: vrChatSourceURL,
+                    to: vrChatDestinationURL
+                )
             } catch {
                 return inspection(.unknownModification(error.localizedDescription))
-            }
-            let imported = try vrChatVerifier.identity(
-                of: vrChatDestinationURL,
-                expected: manifest.vrChat
-            )
-            if let mismatch = imported.mismatch(from: manifest.vrChat) {
-                return inspection(.unknownModification(
-                    "the retained independent VRChat copy is unknown: \(mismatch)"
-                ))
-            }
-            do {
-                try requireIndependentTree(imported, matches: source)
-            } catch {
-                return inspection(.unknownModification(
-                    "the retained independent VRChat copy differs from the original: \(error.localizedDescription)"
-                ))
             }
         }
         do {
@@ -594,18 +553,10 @@ public actor PatcherEngine {
 
     private func completeCreate(
         journal: inout TransactionJournal,
-        sourceIdentity: ObservedVRChatIdentity,
         patchedIdentity: AppIdentity
-    ) async throws -> (
-        strategy: VRChatImportStrategy,
-        imported: ObservedVRChatIdentity
-    ) {
-        let importedResult = try ensureVRChatImported(
-            journal: &journal,
-            sourceIdentity: sourceIdentity
-        )
-        let strategy = importedResult.strategy
-        let configuration = try ensureConfigurationMigrated(journal: &journal)
+    ) async throws -> VRChatImportStrategy {
+        let strategy = try ensureVRChatImported(journal: &journal)
+        _ = try ensureConfigurationMigrated(journal: &journal)
 
         if nodeExists(paths.patchedApp) {
             try requireIdentity(
@@ -653,19 +604,11 @@ public actor PatcherEngine {
         }
 
         _ = try requireOriginalPlayCover()
-        let sourceAfter = try requireOriginalVRChat()
-        guard sourceAfter.treeSHA256 == sourceIdentity.treeSHA256 else {
-            throw PatcherError.unknownModification(
-                "the original VRChat tree changed during import"
-            )
-        }
-        let importedAfter = try requireImportedVRChat()
-        guard importedAfter.treeSHA256 == sourceIdentity.treeSHA256 else {
-            throw PatcherError.identityMismatch(
-                expected: "imported VRChat tree \(sourceIdentity.treeSHA256)",
-                actual: importedAfter.treeSHA256
-            )
-        }
+        // VRChat is user data, not a compatibility target.  Re-check only
+        // that both fixed locations are still safe and independently copied;
+        // no version, signature, UUID, or content digest is consulted.
+        try requireOriginalVRChat()
+        try requireImportedVRChat()
         try CloneFirstVRChatImporter.rejectHardLinks(
             from: vrChatSourceURL,
             to: vrChatDestinationURL
@@ -680,8 +623,6 @@ public actor PatcherEngine {
         journal.phase = .verified
         try writeJournal(journal)
         try writeReceipt(
-            importedTreeSHA256: importedAfter.treeSHA256,
-            configurationSHA256: configuration.sha256,
             strategy: strategy,
             controllerInstallation: controllerInstallation
         )
@@ -698,7 +639,7 @@ public actor PatcherEngine {
             binding: journal.configurationStagingBinding
         )
         try SecureFileSystem.unlinkRegularFileIfPresent(journalURL)
-        return (strategy, importedAfter)
+        return (strategy)
     }
 
     private func ensureControllerInstalled(
@@ -782,16 +723,10 @@ public actor PatcherEngine {
     }
 
     private func ensureVRChatImported(
-        journal: inout TransactionJournal,
-        sourceIdentity: ObservedVRChatIdentity
-    ) throws -> (strategy: VRChatImportStrategy, imported: ObservedVRChatIdentity) {
+        journal: inout TransactionJournal
+    ) throws -> VRChatImportStrategy {
         if nodeExists(vrChatDestinationURL) {
-            let imported = try requireImportedVRChat()
-            guard imported.treeSHA256 == sourceIdentity.treeSHA256 else {
-                throw PatcherError.unknownModification(
-                    "the retained independent VRChat tree differs from the reviewed source"
-                )
-            }
+            try requireImportedVRChat()
             try CloneFirstVRChatImporter.rejectHardLinks(
                 from: vrChatSourceURL,
                 to: vrChatDestinationURL
@@ -804,7 +739,7 @@ public actor PatcherEngine {
             journal.phase = .vrChatImported
             journal.importStrategy = .existingVerified
             try writeJournal(journal)
-            return (.existingVerified, imported)
+            return .existingVerified
         }
 
         try SecureFileSystem.createDirectories(
@@ -825,16 +760,10 @@ public actor PatcherEngine {
                     binding,
                     for: vrChatStagingURL
                 )
-                let staged = try requireVRChat(
+                try requireVRChat(
                     at: vrChatStagingURL,
                     label: "staged VRChat"
                 )
-                guard staged.treeSHA256 == sourceIdentity.treeSHA256 else {
-                    throw PatcherError.identityMismatch(
-                        expected: sourceIdentity.treeSHA256,
-                        actual: staged.treeSHA256
-                    )
-                }
                 try CloneFirstVRChatImporter.rejectHardLinks(
                     from: vrChatSourceURL,
                     to: vrChatStagingURL
@@ -867,16 +796,10 @@ public actor PatcherEngine {
                 for: vrChatStagingURL
             )
             try writeJournal(journal)
-            let staged = try requireVRChat(
+            try requireVRChat(
                 at: vrChatStagingURL,
                 label: "staged VRChat"
             )
-            guard staged.treeSHA256 == sourceIdentity.treeSHA256 else {
-                throw PatcherError.identityMismatch(
-                    expected: sourceIdentity.treeSHA256,
-                    actual: staged.treeSHA256
-                )
-            }
             try CloneFirstVRChatImporter.rejectHardLinks(
                 from: vrChatSourceURL,
                 to: vrChatStagingURL
@@ -902,17 +825,11 @@ public actor PatcherEngine {
             for: vrChatDestinationURL
         )
         journal.vrChatStagingBinding = nil
-        let imported = try requireImportedVRChat()
-        guard imported.treeSHA256 == sourceIdentity.treeSHA256 else {
-            throw PatcherError.identityMismatch(
-                expected: sourceIdentity.treeSHA256,
-                actual: imported.treeSHA256
-            )
-        }
+        try requireImportedVRChat()
         journal.phase = .vrChatImported
         journal.importStrategy = strategy ?? .copyFallback
         try writeJournal(journal)
-        return (journal.importStrategy ?? .copyFallback, imported)
+        return journal.importStrategy ?? .copyFallback
     }
 
     private func ensureConfigurationMigrated(
@@ -1074,21 +991,23 @@ public actor PatcherEngine {
                 expected: patched,
                 label: "installed parallel app"
             )
-            let imported = try requireImportedVRChat()
-            let source = try requireOriginalVRChat()
-            try requireIndependentTree(imported, matches: source)
+            try requireImportedVRChat()
+            try requireOriginalVRChat()
+            try CloneFirstVRChatImporter.rejectHardLinks(
+                from: vrChatSourceURL,
+                to: vrChatDestinationURL
+            )
             _ = try requireOriginalConfiguration()
         } else {
             _ = try requirePayload()
         }
 
-        let source = try requireOriginalVRChat()
+        try requireOriginalVRChat()
         _ = try requireOriginalConfiguration()
         var journal = makeJournal(operation: .repair, phase: .preparing)
         try writeJournal(journal)
         _ = try await completeCreate(
             journal: &journal,
-            sourceIdentity: source,
             patchedIdentity: patched
         )
     }
@@ -1483,11 +1402,12 @@ public actor PatcherEngine {
             )
         }
 
-        // The selected app supplies the user's library and settings.  The
-        // patched app is copied from the reviewed payload bundled with this
-        // Patcher, so a nightly's source hash is not an allowlist.  Keep the
-        // structural identity checks that prevent a foreign bundle from being
-        // used as the PlayCover source anchor.
+        // The selected app is only the user's source/library anchor.  The
+        // patched app itself is copied from the reviewed payload bundled with
+        // this Patcher, so a PlayCover nightly does not need a new source hash
+        // allowlist.  Keep the structural identity checks that prevent a
+        // differently named bundle from being treated as PlayCover.  The
+        // concrete AppTreeVerifier also enforces a regular, arm64 Mach-O.
         let actual = try verifier.identity(of: paths.originalApp)
         guard actual.bundleIdentifier == manifest.playCover.bundleIdentifier else {
             throw PatcherError.identityMismatch(
@@ -1521,11 +1441,11 @@ public actor PatcherEngine {
         return patched
     }
 
-    private func requireOriginalVRChat() throws -> ObservedVRChatIdentity {
+    private func requireOriginalVRChat() throws {
         guard nodeExists(vrChatSourceURL) else {
             throw PatcherError.vrChatMissing(vrChatSourceURL)
         }
-        return try requireVRChat(at: vrChatSourceURL, label: "original VRChat")
+        try requireVRChat(at: vrChatSourceURL, label: "original VRChat")
     }
 
     private func requireOriginalConfiguration() throws
@@ -1555,11 +1475,11 @@ public actor PatcherEngine {
         }
     }
 
-    private func requireImportedVRChat() throws -> ObservedVRChatIdentity {
+    private func requireImportedVRChat() throws {
         guard nodeExists(vrChatDestinationURL) else {
             throw PatcherError.vrChatMissing(vrChatDestinationURL)
         }
-        return try requireVRChat(
+        try requireVRChat(
             at: vrChatDestinationURL,
             label: "independent VRChat copy"
         )
@@ -1568,35 +1488,14 @@ public actor PatcherEngine {
     private func requireVRChat(
         at url: URL,
         label: String
-    ) throws -> ObservedVRChatIdentity {
+    ) throws {
         if isSymbolicLink(url) {
             throw PatcherError.unknownModification("\(label) is a symlink")
         }
-        try VRChatArtifactScanner.verifyClean(url)
-        let actual = try vrChatVerifier.identity(of: url, expected: manifest.vrChat)
-        if let mismatch = actual.mismatch(from: manifest.vrChat) {
-            throw PatcherError.identityMismatch(
-                expected: "\(label) matching the compatibility manifest",
-                actual: mismatch
-            )
-        }
-        return actual
-    }
-
-    private func requireIndependentTree(
-        _ imported: ObservedVRChatIdentity,
-        matches source: ObservedVRChatIdentity
-    ) throws {
-        guard imported.treeSHA256 == source.treeSHA256 else {
-            throw PatcherError.identityMismatch(
-                expected: "VRChat source tree \(source.treeSHA256)",
-                actual: imported.treeSHA256
-            )
-        }
-        try CloneFirstVRChatImporter.rejectHardLinks(
-            from: vrChatSourceURL,
-            to: vrChatDestinationURL
-        )
+        // Audit only the filesystem boundary needed for a safe copy.  The
+        // patcher intentionally does not inspect VRChat's version, signature,
+        // UUID, entitlements, Mach-O files, or bundled PlayTools artifacts.
+        _ = try SecureTreeAuditor.inspect(url)
     }
 
     private func requireIdentity(
@@ -1954,8 +1853,6 @@ public actor PatcherEngine {
     }
 
     private func writeReceipt(
-        importedTreeSHA256: String,
-        configurationSHA256: String,
         strategy: VRChatImportStrategy,
         controllerInstallation: ControllerInstallationEvidence
     ) throws {
@@ -1965,8 +1862,6 @@ public actor PatcherEngine {
             installedAt: Date(),
             originalTreeSHA256: manifest.playCover.treeSHA256,
             patchedTreeSHA256: patched.treeSHA256,
-            importedVRChatTreeSHA256: importedTreeSHA256,
-            configurationSHA256: configurationSHA256,
             importStrategy: strategy,
             controllerInstallation: controllerInstallation
         )
@@ -2019,8 +1914,6 @@ public actor PatcherEngine {
             receipt.patchID == manifest.patchID &&
             AppIdentity.isSHA256(receipt.originalTreeSHA256) &&
             AppIdentity.isSHA256(receipt.patchedTreeSHA256) &&
-            AppIdentity.isSHA256(receipt.importedVRChatTreeSHA256) &&
-            AppIdentity.isSHA256(receipt.configurationSHA256) &&
             receipt.originalTreeSHA256.caseInsensitiveCompare(
                 manifest.playCover.treeSHA256
             ) == .orderedSame &&
@@ -2038,8 +1931,6 @@ public actor PatcherEngine {
             receipt.patchID == manifest.patchID &&
             AppIdentity.isSHA256(receipt.originalTreeSHA256) &&
             AppIdentity.isSHA256(receipt.patchedTreeSHA256) &&
-            AppIdentity.isSHA256(receipt.importedVRChatTreeSHA256) &&
-            AppIdentity.isSHA256(receipt.configurationSHA256) &&
             receipt.originalTreeSHA256.caseInsensitiveCompare(
                 manifest.playCover.treeSHA256
             ) == .orderedSame &&

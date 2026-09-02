@@ -9,7 +9,7 @@ performing a separately approved controller installation test.
 - Apple silicon Mac with Xcode and its command-line tools
 - Git and Python 3
 - Carthage 0.40.0
-- macOS 26.6 (25G70) for runtime compatibility checks
+- macOS with arm64 and a readable `hw.memsize` capability
 - A host whose 75% whole-GiB ceiling is at least 4 GiB for a real session
 
 The Swift unit tests and source-only GUI build can run without VRChat or an IPA.
@@ -27,7 +27,7 @@ Tests/Controller/run-tests.sh
 The Swift suite covers parallel create/repair/remove, interrupted import and
 publish recovery, clone/copy fallback, hard-link rejection, unknown
 modifications, a missing payload, and the schema-2 manifest. Controller tests
-cover bounded dynamic policies, composite VRChat identity, PCVR/2, fake target
+cover bounded dynamic policies, exact target-path safety, PCVR/2, fake target
 backends, and a local socket pair.
 
 ## Build the source-only SwiftUI app
@@ -155,6 +155,8 @@ perform Patch or Repair.
 - Never change, replace, or remove `/Applications/PlayCover.app` or its library.
 - Never accept a caller-supplied path, PID, shell command, fractional limit, or
   value outside 4 GiB through the root-computed 75% ceiling.
-- Never loosen the manifest to guess support for a new macOS or VRChat build.
+- Never loosen the manifest to guess support for a new PlayCover or controller
+  build. VRChat content is not allowlisted; only its fixed launch path and
+  filesystem safety are checked.
 - Never publish a controller whose exact binary did not complete the final
   two-session, 30-minute real-machine acceptance test.

@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  免费、开源的 PlayCover 与 VRChat 兼容补丁工具，不修改官方 PlayCover。
+  免费、开源的 PlayCover 兼容补丁工具，不修改官方 PlayCover。
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 - 保留 `/Applications/PlayCover.app` 不变。
 - 创建独立的 `/Applications/PlayCover VRChat.app` 和游戏库。
-- 导入 VRChat，不按版本建立内容白名单。
+- 导入 VRChat，不按版本或二进制哈希拒绝。
 - 启动 VRChat 时临时应用内存 soft limit。
 - 支持自动使用 75% 内存，或手动选择整 GiB 上限。
 
@@ -39,7 +39,7 @@
 ## 工作原理
 
 1. Patcher 将官方 PlayCover 复制为独立应用和独立游戏库。
-2. 导入 VRChat，不修改 VRChat，也不注入 dylib。
+2. 导入 VRChat 并验证复制结果，不修改 VRChat，也不注入 dylib。
 3. 启动 VRChat 时，定制版 PlayCover 请求已授权的 controller 等待这个精确进程。
 4. controller 应用 non-fatal 内存 soft limit，并在运行期间修复已知的
    RunningBoard 重置。
@@ -48,9 +48,8 @@
 VRChat 启动路径不会使用 PlayTools，因为它的注入可能导致完整性检查失败。
 移除冲突后，检查可以正常通过。内存策略只改变系统报告的上限，不会预先占用 RAM。
 
-在当前锁定的 VRChat 版本中，T5/T6 对照显示：非零内存语义是远程头像和模型
-AssetBundle 加载路径正常工作的必要条件之一。这是当前兼容版本的实测结论，
-不代表所有未来版本。
+非零策略用于修复可能阻止远程头像和图片资源加载的 `0 MB` 内存报告。补丁不会
+按 VRChat 版本或二进制哈希锁定游戏。
 
 ## 已安装 controller 的原理
 
@@ -59,12 +58,12 @@ AssetBundle 加载路径正常工作的必要条件之一。这是当前兼容�
 `memorystatus_control` 接口，为精确的 VRChat 进程设置临时内存上限。
 底层使用 `MEMORYSTATUS_CMD_SET_MEMLIMIT_PROPERTIES`，然后回读策略确认生效。
 
-它根据 `hw.memsize` 计算安全上限，检查 VRChat 身份和当前 arm64 主机能力，等待目标进程，
-回读策略并修复已知的 RunningBoard 重置。VRChat 退出后策略自动移除。任何身份、
-内存压力或策略不匹配都会安全停止，不会操作其他进程。
+它根据 `hw.memsize` 计算安全上限，检查固定目标路径和当前 arm64 主机能力，等待目标进程，
+回读策略并修复已知的 RunningBoard 重置。VRChat 退出后策略自动移除。任何路径、内存压力
+或策略不匹配都会安全停止，不会操作其他进程。
 
-macOS 的 build/XNU 字符串只作为测试记录，不再作为运行锁；真正的策略写入、回读、
-VRChat 身份和运行时映像检查仍然失败即停止。
+macOS 的 build/XNU 字符串只作为测试记录，不再作为运行锁；真正的策略写入、回读和
+目标路径检查失败时才会停止。
 
 日志中的可用余量是动态值：选择的上限减去当前 footprint。controller 不伪造
 内存 API 返回值，不 Hook Unity，也不修改 Appdome 或 `libloader`；它只在游戏外
@@ -76,12 +75,13 @@ VRChat 身份和运行时映像检查仍然失败即停止。
 
 - Apple silicon Mac
 - macOS 26.6 / build `25G70`（测试基线，不是运行锁）
-- PlayCover `3.1.0 (856)`（测试基线）
-- VRChat `2026.2.30300 (1365)`
+- PlayCover `3.1.0 (856)`
+- VRChat（原版 PlayCover 游戏库中已安装的版本）
 
-选择的 PlayCover 只检查 bundle 身份和安全的 arm64 结构，不把版本、可执行文件
-哈希、UUID 或全树哈希作为白名单。因此兼容的 nightly 也可以作为源应用和游戏库锚点。
-定制应用本身仍来自工具内置的已审阅 payload；VRChat 按原样复制。
+选择的 PlayCover 只检查 bundle 身份和安全的 arm64 应用结构，官方 nightly 也可以接受；
+不会把版本、可执行文件哈希、UUID 或全树哈希当作白名单。生成的定制副本仍来自 Patcher
+内置的已审阅 payload；如果要保留 nightly 自己的界面改动，需要单独审阅并构建对应 payload。
+VRChat 不按版本或二进制内容拒绝。macOS point release 的 build/XNU 字符串只是测试记录，不是运行锁。
 
 ### 首次启动
 
@@ -132,8 +132,8 @@ Patch、Repair 和 Remove 不会删除官方应用或官方游戏库。
 
 ## 限制
 
-- 当前是开发者 Alpha，不是通用 PlayCover 发行版。
-- 外部 bundle、不安全的应用结构或不支持的架构会安全停止。
+- 当前是按 PlayCover 版本审阅的开发者 Alpha，不是通用 PlayCover 发行版。
+- 不支持的 PlayCover 或架构会安全停止；VRChat 不会因版本或二进制内容被拒绝。
 - 不要使用未审阅的 CI artifact 或修改过的 payload。
 - 目前还没有公开签名和公证版本。
 

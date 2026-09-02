@@ -62,7 +62,7 @@ def main() -> None:
         "manifest",
         {
             "schemaVersion", "patchID", "supportState", "architecture",
-            "playCover", "layout", "vrChat", "host", "policy", "ipc",
+            "playCover", "layout", "host", "policy", "ipc",
         },
         {"patchedPlayCover", "controllerPackage"},
     )
@@ -119,80 +119,6 @@ def main() -> None:
         "sharedVRChatContainerRelativePath": "Library/Containers/com.vrchat.mobile",
     }:
         fail("unexpected parallel-install layout")
-
-    vrchat = require_object(
-        value.get("vrChat"),
-        "vrChat",
-        {
-            "bundleIdentifier", "shortVersion", "buildVersion",
-            "sourceAppRelativePath", "destinationAppRelativePath",
-            "executableName", "mainIdentity", "unityFramework",
-            "appdomeLibloader", "machoAllowlist",
-        },
-    )
-    expected_vrchat_metadata = {
-        "bundleIdentifier": "com.vrchat.mobile",
-        "shortVersion": "2026.2.30300",
-        "buildVersion": "1365",
-        "sourceAppRelativePath": "Library/Containers/io.playcover.PlayCover/Applications/com.vrchat.mobile.app",
-        "destinationAppRelativePath": "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat/Applications/com.vrchat.mobile.app",
-        "executableName": "VRChat",
-    }
-    for key, expected in expected_vrchat_metadata.items():
-        if vrchat.get(key) != expected:
-            fail(f"unexpected VRChat {key}")
-
-    main_identity = require_object(
-        vrchat.get("mainIdentity"),
-        "vrChat.mainIdentity",
-        {
-            "executableUUID", "normalizedUnsignedSHA256",
-            "normalizedLoadCommandsSHA256", "normalizedEntitlementsSHA256",
-        },
-    )
-    expected_main_identity = {
-        "executableUUID": "41CADB30-CCEF-3B6C-8A1D-237CE5D64C42",
-        "normalizedUnsignedSHA256": "cd6749e212d1ffed0e48a85cbd4d803e419eac8634fa1dcd62e25ea153e5bec3",
-        "normalizedLoadCommandsSHA256": "664266000f81b937260522d25eda5d81bff3f5d460e5e14512f471c8eaec9afb",
-        "normalizedEntitlementsSHA256": "5897ec7c1e895de492424821a7b5dbe4bea2552345244c20029a4083a4bb01f4",
-    }
-    if main_identity != expected_main_identity:
-        fail("unexpected reviewed VRChat main identity")
-
-    macho_allowlist = require_object(
-        vrchat.get("machoAllowlist"),
-        "vrChat.machoAllowlist",
-        {"format", "digestSHA256", "count"},
-    )
-    if macho_allowlist != {
-        "format": "PCVR-MACHO-ALLOWLIST/1",
-        "digestSHA256": "60df094badbe3fb9e8f051f07d2a38a54cfb7bd592c3cf62a69e355050ec5109",
-        "count": 46,
-    }:
-        fail("unexpected reviewed VRChat Mach-O allowlist")
-
-    nested_expected = {
-        "unityFramework": {
-            "relativePath": "Frameworks/UnityFramework.framework/UnityFramework",
-            "executableSHA256": "497d0ea4416d734ef0fb8dbb1376a0c31370577ed86bfd8f37a6d1f63e2163e9",
-            "executableUUID": "37732282-7315-38F5-9DD3-124F2B1162B4",
-        },
-        "appdomeLibloader": {
-            "relativePath": "Frameworks/libloader.framework/libloader",
-            "executableSHA256": "90fd505324581d09883e03cbb46ac6cf8817c18181fa9438381551d589d62440",
-            "executableUUID": "64B5DAFB-DE12-3089-AE61-912CE193C876",
-        },
-    }
-    for key, expected in nested_expected.items():
-        observed = require_object(
-            vrchat.get(key),
-            f"vrChat.{key}",
-            {"relativePath", "executableSHA256", "executableUUID"},
-        )
-        require_sha(observed.get("executableSHA256"), f"vrChat.{key}")
-        require_uuid(observed.get("executableUUID"), f"vrChat.{key}")
-        if observed != expected:
-            fail(f"unexpected reviewed VRChat {key} identity")
 
     host = require_object(
         value.get("host"), "host",

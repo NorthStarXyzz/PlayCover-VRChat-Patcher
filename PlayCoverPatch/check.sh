@@ -292,7 +292,7 @@ require_count() {
     fi
 }
 
-require_count 1 'throw VRChatReadOnlyLaunchError\.importRequiresCompatibleCopy' \
+require_count 1 'throw VRChatImportError\.patchedCopyRequired' \
     "$source_root/PlayCover/AppInstaller/Installer.swift"
 require_count 0 'supportsPlayTools' \
     "$source_root/PlayCover/AppInstaller/Installer.swift"
@@ -318,13 +318,15 @@ require_count 1 '^                    runAppExec\(\)$' \
     "$source_root/PlayCover/Model/PlayApp.swift"
 require_count 0 'launchApp\(mode: \.standard\)|playapp\.launch\.standard' \
     "$source_root/PlayCover/Views/App Views/PlayAppView.swift"
-require_count 1 'private func launchVRChatReadOnly\(\) async throws' \
+require_count 1 'private func launchVRChatWithMemoryPolicy\(\) async throws' \
     "$source_root/PlayCover/Model/PlayApp.swift"
 require_count 1 '^                at: url,$' \
     "$source_root/PlayCover/Model/PlayApp.swift"
 require_count 1 '^            at: aliasURL,$' \
     "$source_root/PlayCover/Model/PlayApp.swift"
-require_count 1 'func isCodeSignatureValid\(\) throws -> Bool' \
+require_count 0 'VRChatReadOnlyLaunchError|launchVRChatReadOnly|isCodeSignatureValid' \
+    "$source_root/PlayCover/Model/PlayApp.swift"
+require_count 0 'guard !hasPlayTools\(\)|guard try Entitlements\.areEntitlementsValid|guard try isInfoPlistSigned|guard try Macho\.isMachoValidArch' \
     "$source_root/PlayCover/Model/PlayApp.swift"
 require_count 0 'NSPasteboard|controllerStartCommand' \
     "$source_root/PlayCover/Model/PlayApp.swift"
@@ -400,17 +402,11 @@ require_count 1 'static let reviewedRunnerSHA256 =' \
     "$destination"
 require_count 1 "$reviewed_runner_sha" \
     "$destination"
-require_count 1 'static let reviewedMachOCount = 46' \
+require_count 0 'reviewedMachO|reviewedMain|expectedShortVersion|expectedBuildVersion' \
     "$destination"
-require_count 1 '60df094badbe3fb9e8f051f07d2a38a54cfb7bd592c3cf62a69e355050ec5109' \
+require_count 0 'machoAllowlist|normalizedUnsignedSHA256|normalizedLoadCommandsSHA256|normalizedEntitlementsSHA256' \
     "$destination"
-require_count 1 '5897ec7c1e895de492424821a7b5dbe4bea2552345244c20029a4083a4bb01f4' \
-    "$destination"
-require_count 1 'static let reviewedMainUUID = "41cadb30ccef3b6c8a1d237ce5d64c42"' \
-    "$destination"
-require_count 1 'cd6749e212d1ffed0e48a85cbd4d803e419eac8634fa1dcd62e25ea153e5bec3' \
-    "$destination"
-require_count 1 '664266000f81b937260522d25eda5d81bff3f5d460e5e14512f471c8eaec9afb' \
+require_count 0 'error\.vrchatIdentity|reviewed VRChat composite identity' \
     "$destination"
 require_count 1 'appendingPathComponent\("Applications", isDirectory: true\)' \
     "$destination"
@@ -418,11 +414,7 @@ require_count 1 'struct SystemVRChatCompatibleBundleIdentityValidator:' \
     "$destination"
 require_count 1 'static func validateExactLocation\(' \
     "$destination"
-require_count 1 'SecStaticCodeCheckValidity\(' \
-    "$destination"
-require_count 1 'kSecCSCheckNestedCode' \
-    "$destination"
-require_count 1 'PCVR-MACHO-ALLOWLIST/1\\n' \
+require_count 0 'SecStaticCode(CheckValidity|CreateWithPath)|SecCodeCopySigningInformation|PCVR-MACHO-ALLOWLIST/1' \
     "$destination"
 require_count 1 'func bindLaunchServicesProcess\(' \
     "$destination"
@@ -450,7 +442,7 @@ require_count 1 'static func validateRunnerNode\(' \
     "$destination"
 require_count 1 '^            "/",$' \
     "$destination"
-require_count 3 'O_RDONLY \| O_CLOEXEC \| O_NOFOLLOW' \
+require_count 1 'O_RDONLY \| O_CLOEXEC \| O_NOFOLLOW' \
     "$destination"
 require_count 2 'try revalidateFixedRunner\(binding\)' \
     "$destination"

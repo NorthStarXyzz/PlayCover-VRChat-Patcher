@@ -8,13 +8,12 @@ source_files=(
     "$script_dir/vrchat-memory-policy-controller.c"
     "$script_dir/pcvr-bundle-identity.c"
     "$script_dir/pcvr-memory-policy.c"
-    "$script_dir/pcvr-runtime-images.c"
     "$script_dir/pcvr-status-protocol.c"
     "$script_dir/pcvr-target.c"
 )
 build_dir="$script_dir/build"
 output="$build_dir/vrchat-memory-policy-controller"
-expected_sha=24ac15360261a96542de5348e789155a90f53c7132674a74ed24b54048005d73
+expected_sha=fa53e940f40ec833fcf16a06ea3e81fa27fb89f980426cf710e8700867cd74c2
 
 /bin/mkdir -p "$build_dir"
 temporary_dir=''

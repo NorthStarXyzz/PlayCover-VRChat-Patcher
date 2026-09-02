@@ -7,7 +7,6 @@ public struct CompatibilityManifest: Codable, Sendable, Equatable {
     public let architecture: String
     public let playCover: AppIdentity
     public let patchedPlayCover: AppIdentity?
-    public let vrChat: VRChatIdentity
     public let host: HostRequirement
     public let policy: MemoryPolicy
     public let ipc: IPCRequirement
@@ -20,7 +19,6 @@ public struct CompatibilityManifest: Codable, Sendable, Equatable {
         architecture: String,
         playCover: AppIdentity,
         patchedPlayCover: AppIdentity?,
-        vrChat: VRChatIdentity,
         host: HostRequirement,
         policy: MemoryPolicy,
         ipc: IPCRequirement,
@@ -32,7 +30,6 @@ public struct CompatibilityManifest: Codable, Sendable, Equatable {
         self.architecture = architecture
         self.playCover = playCover
         self.patchedPlayCover = patchedPlayCover
-        self.vrChat = vrChat
         self.host = host
         self.policy = policy
         self.ipc = ipc
@@ -60,7 +57,6 @@ public struct CompatibilityManifest: Codable, Sendable, Equatable {
 
         try playCover.validateShape(label: "playCover")
         try patchedPlayCover?.validateShape(label: "patchedPlayCover")
-        try vrChat.validateShape()
         try controllerPackage?.validateShape()
 
         guard playCover.bundleIdentifier == "io.playcover.PlayCover" else {
@@ -352,189 +348,6 @@ public struct AppIdentity: Codable, Sendable, Equatable {
     }
 }
 
-public struct VRChatIdentity: Codable, Sendable, Equatable {
-    public let bundleIdentifier: String
-    public let shortVersion: String
-    public let buildVersion: String
-    public let sourceAppRelativePath: String
-    public let destinationAppRelativePath: String
-    public let executableName: String
-    public let mainIdentity: PortableMachOIdentity
-    public let unityFramework: ReviewedBinaryIdentity
-    public let appdomeLibloader: ReviewedBinaryIdentity
-    public let machoAllowlist: MachOAllowlistIdentity
-
-    public init(
-        bundleIdentifier: String,
-        shortVersion: String,
-        buildVersion: String,
-        sourceAppRelativePath: String,
-        destinationAppRelativePath: String,
-        executableName: String,
-        mainIdentity: PortableMachOIdentity,
-        unityFramework: ReviewedBinaryIdentity,
-        appdomeLibloader: ReviewedBinaryIdentity,
-        machoAllowlist: MachOAllowlistIdentity
-    ) {
-        self.bundleIdentifier = bundleIdentifier
-        self.shortVersion = shortVersion
-        self.buildVersion = buildVersion
-        self.sourceAppRelativePath = sourceAppRelativePath
-        self.destinationAppRelativePath = destinationAppRelativePath
-        self.executableName = executableName
-        self.mainIdentity = mainIdentity
-        self.unityFramework = unityFramework
-        self.appdomeLibloader = appdomeLibloader
-        self.machoAllowlist = machoAllowlist
-    }
-
-    fileprivate func validateShape() throws {
-        guard bundleIdentifier == "com.vrchat.mobile",
-              shortVersion == "2026.2.30300",
-              buildVersion == "1365",
-              executableName == "VRChat",
-              sourceAppRelativePath ==
-                "Library/Containers/io.playcover.PlayCover/Applications/com.vrchat.mobile.app",
-              destinationAppRelativePath ==
-                "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat/Applications/com.vrchat.mobile.app" else {
-            throw PatcherError.invalidManifest("unexpected VRChat metadata or path")
-        }
-        try mainIdentity.validateShape(label: "vrChat.mainIdentity")
-        try unityFramework.validateShape(
-            label: "vrChat.unityFramework",
-            requiredPath: "Frameworks/UnityFramework.framework/UnityFramework"
-        )
-        try appdomeLibloader.validateShape(
-            label: "vrChat.appdomeLibloader",
-            requiredPath: "Frameworks/libloader.framework/libloader"
-        )
-        try machoAllowlist.validateShape()
-    }
-}
-
-public struct MachOAllowlistIdentity: Codable, Sendable, Equatable {
-    public let format: String
-    public let digestSHA256: String
-    public let count: UInt16
-
-    public init(format: String, digestSHA256: String, count: UInt16) {
-        self.format = format
-        self.digestSHA256 = digestSHA256.lowercased()
-        self.count = count
-    }
-
-    fileprivate func validateShape() throws {
-        guard format == "PCVR-MACHO-ALLOWLIST/1",
-              digestSHA256 ==
-                "60df094badbe3fb9e8f051f07d2a38a54cfb7bd592c3cf62a69e355050ec5109",
-              count == 46 else {
-            throw PatcherError.invalidManifest(
-                "unexpected VRChat Mach-O allowlist identity"
-            )
-        }
-    }
-}
-
-public struct PortableMachOIdentity: Codable, Sendable, Equatable {
-    public let uuid: String
-    public let normalizedUnsignedSHA256: String
-    public let loadCommandsSHA256: String
-    public let entitlementsSHA256: String
-    public let reviewedInstalledSHA256: String?
-
-    public init(
-        uuid: String,
-        normalizedUnsignedSHA256: String,
-        loadCommandsSHA256: String,
-        entitlementsSHA256: String,
-        reviewedInstalledSHA256: String? = nil
-    ) {
-        self.uuid = uuid.uppercased()
-        self.normalizedUnsignedSHA256 = normalizedUnsignedSHA256.lowercased()
-        self.loadCommandsSHA256 = loadCommandsSHA256.lowercased()
-        self.entitlementsSHA256 = entitlementsSHA256.lowercased()
-        self.reviewedInstalledSHA256 = reviewedInstalledSHA256?.lowercased()
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case uuid = "executableUUID"
-        case normalizedUnsignedSHA256
-        case loadCommandsSHA256 = "normalizedLoadCommandsSHA256"
-        case entitlementsSHA256 = "normalizedEntitlementsSHA256"
-        case reviewedInstalledSHA256
-    }
-
-    fileprivate func validateShape(label: String) throws {
-        guard UUID(uuidString: uuid) != nil,
-              AppIdentity.isSHA256(normalizedUnsignedSHA256),
-              AppIdentity.isSHA256(loadCommandsSHA256),
-              AppIdentity.isSHA256(entitlementsSHA256),
-              reviewedInstalledSHA256.map(AppIdentity.isSHA256) ?? true else {
-            throw PatcherError.invalidManifest("invalid \(label)")
-        }
-    }
-}
-
-public struct ReviewedBinaryIdentity: Codable, Sendable, Equatable {
-    public let relativePath: String
-    public let sha256: String
-    public let uuid: String
-
-    public init(relativePath: String, sha256: String, uuid: String) {
-        self.relativePath = relativePath
-        self.sha256 = sha256.lowercased()
-        self.uuid = uuid.uppercased()
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case relativePath
-        case sha256 = "executableSHA256"
-        case uuid = "executableUUID"
-    }
-
-    fileprivate func validateShape(label: String, requiredPath: String) throws {
-        guard relativePath == requiredPath,
-              AppIdentity.isSHA256(sha256),
-              UUID(uuidString: uuid) != nil else {
-            throw PatcherError.invalidManifest("invalid \(label)")
-        }
-    }
-}
-
-public struct ObservedVRChatIdentity: Sendable, Equatable {
-    public let bundleIdentifier: String
-    public let shortVersion: String
-    public let buildVersion: String
-    public let executableName: String
-    public let mainIdentity: PortableMachOIdentity
-    public let unityFramework: ReviewedBinaryIdentity
-    public let appdomeLibloader: ReviewedBinaryIdentity
-    public let machoAllowlist: MachOAllowlistIdentity
-    public let treeSHA256: String
-
-    public init(
-        bundleIdentifier: String,
-        shortVersion: String,
-        buildVersion: String,
-        executableName: String,
-        mainIdentity: PortableMachOIdentity,
-        unityFramework: ReviewedBinaryIdentity,
-        appdomeLibloader: ReviewedBinaryIdentity,
-        machoAllowlist: MachOAllowlistIdentity,
-        treeSHA256: String
-    ) {
-        self.bundleIdentifier = bundleIdentifier
-        self.shortVersion = shortVersion
-        self.buildVersion = buildVersion
-        self.executableName = executableName
-        self.mainIdentity = mainIdentity
-        self.unityFramework = unityFramework
-        self.appdomeLibloader = appdomeLibloader
-        self.machoAllowlist = machoAllowlist
-        self.treeSHA256 = treeSHA256.lowercased()
-    }
-}
-
 public struct HostRequirement: Codable, Sendable, Equatable {
     public let productVersion: String
     public let buildVersion: String
@@ -720,8 +533,6 @@ public struct PatchReceipt: Codable, Sendable, Equatable {
     public let installedAt: Date
     public let originalTreeSHA256: String
     public let patchedTreeSHA256: String
-    public let importedVRChatTreeSHA256: String
-    public let configurationSHA256: String
     public let importStrategy: VRChatImportStrategy
     public let controllerInstallation: ControllerInstallationEvidence
 
@@ -730,8 +541,6 @@ public struct PatchReceipt: Codable, Sendable, Equatable {
         installedAt: Date,
         originalTreeSHA256: String,
         patchedTreeSHA256: String,
-        importedVRChatTreeSHA256: String,
-        configurationSHA256: String,
         importStrategy: VRChatImportStrategy,
         controllerInstallation: ControllerInstallationEvidence
     ) {
@@ -740,8 +549,6 @@ public struct PatchReceipt: Codable, Sendable, Equatable {
         self.installedAt = installedAt
         self.originalTreeSHA256 = originalTreeSHA256.lowercased()
         self.patchedTreeSHA256 = patchedTreeSHA256.lowercased()
-        self.importedVRChatTreeSHA256 = importedVRChatTreeSHA256.lowercased()
-        self.configurationSHA256 = configurationSHA256.lowercased()
         self.importStrategy = importStrategy
         self.controllerInstallation = controllerInstallation
     }
@@ -809,7 +616,7 @@ public enum PatcherError: LocalizedError, Sendable, Equatable {
         case .payloadMissing(let url):
             "The patched PlayCover payload was not found at \(url.path)."
         case .vrChatMissing(let url):
-            "The reviewed VRChat installation was not found at \(url.path)."
+            "VRChat was not found at \(url.path)."
         case .vrChatConfigurationMissing(let url):
             "Required VRChat configuration was not found at \(url.path)."
         case .identityMismatch(let expected, let actual):
@@ -823,11 +630,11 @@ public enum PatcherError: LocalizedError, Sendable, Equatable {
         case .transactionFailed(let reason):
             "Patch transaction failed: \(reason)"
         case .hardLinkDetected(let relativePath):
-            "Imported VRChat contains a forbidden hard link to its source at \(relativePath)."
+            "The imported game contains a forbidden hard link at \(relativePath)."
         case .payloadUnavailable:
             "The reviewed patched PlayCover payload is not included in this build."
         case .controllerSetupRequired(let reason):
-            "The exact VRChat controller setup is required (\(reason.rawValue))."
+            "The memory-policy controller setup is required (\(reason.rawValue))."
         case .controllerSetupCancelled:
             "Controller setup was cancelled; Repair can resume it safely."
         case .controllerSetupTimedOut:

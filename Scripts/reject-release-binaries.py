@@ -43,6 +43,11 @@ def check_repository(root: pathlib.Path) -> None:
         if has_forbidden_suffix(relative):
             raise SystemExit("tracked release binary is forbidden: " + relative)
         path = root / relative
+        # A tracked path may be intentionally removed in the working tree
+        # (for example, when retiring an old reviewed binary fixture).  It is
+        # absent from a source archive and therefore has nothing to inspect.
+        if not path.exists() and not path.is_symlink():
+            continue
         mode = path.lstat().st_mode
         if not stat.S_ISREG(mode):
             continue

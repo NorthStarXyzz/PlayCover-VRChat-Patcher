@@ -138,7 +138,7 @@ def load_manifest(repo: pathlib.Path, relative: str) -> Dict[str, Any]:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise InventoryError("invalid compatibility manifest: {}".format(relative)) from error
-    for key in ("patchID", "supportState", "playCover", "vrChat", "host"):
+    for key in ("patchID", "supportState", "playCover", "host"):
         if key not in value:
             raise InventoryError("{} is missing {}".format(relative, key))
     return value
@@ -301,8 +301,6 @@ def build_inventory(repo: pathlib.Path, release_tag: str, commit: str) -> Dict[s
                 "path": relative,
                 "sha256": sha256(repo / relative),
                 "supportState": value["supportState"],
-                "vrChatBuild": value["vrChat"]["buildVersion"],
-                "vrChatVersion": value["vrChat"]["shortVersion"],
                 "xnuVersion": value["host"]["xnuVersion"],
             }
         )

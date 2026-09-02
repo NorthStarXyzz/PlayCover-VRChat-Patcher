@@ -98,7 +98,6 @@ final class PatcherEngineTests: XCTestCase {
             architecture: "arm64",
             playCover: .sourceFixture,
             patchedPlayCover: nil,
-            vrChat: .fixture,
             host: CompatibilityManifest.fixture.host,
             policy: CompatibilityManifest.fixture.policy,
             ipc: CompatibilityManifest.fixture.ipc,
@@ -192,10 +191,10 @@ final class PatcherEngineTests: XCTestCase {
     func testPlayCoverNightlyVersionAndHashesAreAccepted() async throws {
         // Nightlies keep PlayCover's bundle identity but change the build,
         // executable digest and tree hash.  Those source details must not be
-        // an allowlist because the generated app comes from our reviewed
+        // an allowlist because the generated app is copied from our reviewed
         // payload and the selected app is only the source/library anchor.
         try "nightly".write(
-            to: originalApp.appendingPathComponent("nightly-build"),
+            to: originalApp.appendingPathComponent("marker"),
             atomically: true,
             encoding: .utf8
         )
@@ -798,6 +797,29 @@ final class PatcherEngineTests: XCTestCase {
         )
     }
 
+    func testPreviousR7PairIsOnlyAnUpgradePredecessor() {
+        let runner = "49f7cc361b072891182144e0f8141412b192c2647c0740c7febc5483b01337dd"
+        let attestation = "45b471725262b670ede72a398bc8b6c34b9ea21eac1859ad9e7c849248b66d9b"
+        XCTAssertTrue(
+            RootControllerInstallationVerifier.isReviewedPreR7Pair(
+                runnerSHA256: runner,
+                attestationSHA256: attestation
+            )
+        )
+        XCTAssertFalse(
+            RootControllerInstallationVerifier.isReviewedPreR7Pair(
+                runnerSHA256: runner,
+                attestationSHA256: String(repeating: "0", count: 64)
+            )
+        )
+        XCTAssertFalse(
+            RootControllerInstallationVerifier.isReviewedPreR7Pair(
+                runnerSHA256: String(repeating: "0", count: 64),
+                attestationSHA256: attestation
+            )
+        )
+    }
+
     func testRootUninstallRecognizesOnlyReviewedOrderedSubsets() throws {
         let fixture = try makeRootControllerStateFixture()
         try fixture.uninstallJournalData.write(to: fixture.uninstallJournal)
@@ -1148,29 +1170,22 @@ final class PatcherEngineTests: XCTestCase {
         XCTAssertEqual(installCalls, 1)
     }
 
-    func testConfigurationMigrationSanitizesSettingsAndRewritesFileURLs() async throws {
+    func testConfigurationCopiesOpaqueSettingsAndRewritesFileURLs() async throws {
         let sourceConfig = originalLibrary.appendingPathComponent(
             "Keymapping/com.vrchat.mobile/.config.plist"
         )
         let sourceConfigBefore = try Data(contentsOf: sourceConfig)
+        let sourceSettings = originalLibrary.appendingPathComponent(
+            SelectiveVRChatConfigurationMigrator.appSettingsRelativePath
+        )
+        let sourceSettingsBefore = try Data(contentsOf: sourceSettings)
         let engine = try makeEngine()
         _ = try await engine.createPatchedCopy()
 
         let settings = try plistDictionary(at: patchedAppSettings)
-        XCTAssertEqual(
-            Set(settings.keys),
-            SelectiveVRChatConfigurationMigrator.safeAppSettingKeys
-        )
-        for omitted in [
-            "bypass",
-            "injectIntrospection",
-            "playChain",
-            "playChainDebugging",
-            "rootWorkDir",
-            "futureUnknownSetting"
-        ] {
-            XCTAssertNil(settings[omitted])
-        }
+        XCTAssertEqual(settings["bundleIdentifier"] as? String, "com.vrchat.mobile")
+        XCTAssertEqual(settings["futureUnknownSetting"] as? String, "must not migrate")
+        XCTAssertEqual(try Data(contentsOf: patchedAppSettings), sourceSettingsBefore)
 
         let migratedConfig = try plistDictionary(
             at: patchedKeymapping.appendingPathComponent(".config.plist")
@@ -1286,26 +1301,119 @@ final class PatcherEngineTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: patchedApp.path))
     }
 
-    func testUnsupportedVRChatFailsBeforeAnyTransactionWrite() async throws {
+    func testVRChatContentIsNotCompatibilityChecked() async throws {
         try "foreign".write(
             to: sourceVRChat.appendingPathComponent("marker"),
             atomically: true,
             encoding: .utf8
         )
         let engine = try makeEngine()
-        guard case .unknownModification = try await engine.inspect().state else {
-            return XCTFail("expected unsupported VRChat classification")
-        }
-        await XCTAssertThrowsErrorAsync(try await engine.createPatchedCopy()) {
-            guard case PatcherError.identityMismatch = $0 else {
-                return XCTFail("unexpected \($0)")
-            }
-        }
-        XCTAssertFalse(FileManager.default.fileExists(atPath: support.path))
-        XCTAssertFalse(FileManager.default.fileExists(atPath: patchedApp.path))
+        let inspection = try await engine.inspect()
+        XCTAssertEqual(inspection.state, .readyToCreate)
     }
 
-    func testExcludedPlayToolsArtifactFailsBeforeAnyTransactionWrite() async throws {
+    func testForeignVRChatVersionAndBinaryHashesAreAcceptedByPatchFlow()
+        async throws {
+        // This fixture deliberately looks nothing like the reviewed VRChat
+        // build: it has a different bundle identity/version and arbitrary
+        // non-Mach-O bytes for the executable and native frameworks.  A
+        // content-identity gate would reject it before the transaction could
+        // start.  VRChat is user data, so the patcher should import the tree
+        // unchanged and leave compatibility decisions to the app itself.
+        let foreignInfo: [String: Any] = [
+            "CFBundleIdentifier": "com.example.vrchat.foreign",
+            "CFBundleShortVersionString": "99.7.42",
+            "CFBundleVersion": "999742",
+            "CFBundleExecutable": "VRChat"
+        ]
+        let foreignInfoURL = sourceVRChat.appendingPathComponent("Info.plist")
+        try writePlist(foreignInfo, to: foreignInfoURL)
+
+        let foreignExecutable = sourceVRChat.appendingPathComponent("VRChat")
+        let foreignExecutableBytes = Data((0..<257).map {
+            UInt8(($0 * 73 + 19) % 251)
+        })
+        try foreignExecutableBytes.write(to: foreignExecutable)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: foreignExecutable.path
+        )
+
+        let foreignUnity = sourceVRChat.appendingPathComponent(
+            "Frameworks/UnityFramework.framework/UnityFramework"
+        )
+        let foreignLoader = sourceVRChat.appendingPathComponent(
+            "Frameworks/Appdome.framework/libloader"
+        )
+        try FileManager.default.createDirectory(
+            at: foreignUnity.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: foreignLoader.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let foreignUnityBytes = Data((0..<193).map {
+            UInt8(($0 * 29 + 7) % 251)
+        })
+        let foreignLoaderBytes = Data((0..<211).map {
+            UInt8(($0 * 41 + 3) % 251)
+        })
+        try foreignUnityBytes.write(to: foreignUnity)
+        try foreignLoaderBytes.write(to: foreignLoader)
+
+        let executableSHA256 = try AppTreeVerifier.fileSHA256(foreignExecutable)
+        let unitySHA256 = try AppTreeVerifier.fileSHA256(foreignUnity)
+        let loaderSHA256 = try AppTreeVerifier.fileSHA256(foreignLoader)
+        XCTAssertEqual(executableSHA256.count, 64)
+        XCTAssertEqual(unitySHA256.count, 64)
+        XCTAssertEqual(loaderSHA256.count, 64)
+        XCTAssertEqual(Set([executableSHA256, unitySHA256, loaderSHA256]).count, 3)
+
+        let engine = try makeEngine()
+        let inspection = try await engine.inspect()
+        XCTAssertEqual(
+            inspection.state,
+            .readyToCreate,
+            "VRChat metadata and binary digests must not gate inspection"
+        )
+
+        let result = try await engine.createPatchedCopy()
+        XCTAssertEqual(result.inspection.state, .fullyPatched)
+        XCTAssertEqual(
+            try Data(contentsOf: importedVRChat.appendingPathComponent("VRChat")),
+            foreignExecutableBytes
+        )
+        XCTAssertEqual(
+            try Data(contentsOf: importedVRChat.appendingPathComponent(
+                "Frameworks/UnityFramework.framework/UnityFramework"
+            )),
+            foreignUnityBytes
+        )
+        XCTAssertEqual(
+            try Data(contentsOf: importedVRChat.appendingPathComponent(
+                "Frameworks/Appdome.framework/libloader"
+            )),
+            foreignLoaderBytes
+        )
+        let importedInfo = try plistDictionary(
+            at: importedVRChat.appendingPathComponent("Info.plist")
+        )
+        XCTAssertEqual(
+            importedInfo["CFBundleIdentifier"] as? String,
+            "com.example.vrchat.foreign"
+        )
+        XCTAssertEqual(
+            importedInfo["CFBundleShortVersionString"] as? String,
+            "99.7.42"
+        )
+        XCTAssertEqual(
+            importedInfo["CFBundleVersion"] as? String,
+            "999742"
+        )
+    }
+
+    func testPlayToolsContentIsNotCompatibilityChecked() async throws {
         let excluded = sourceVRChat.appendingPathComponent(
             "Frameworks/PlayTools.framework/PlayTools"
         )
@@ -1315,17 +1423,30 @@ final class PatcherEngineTests: XCTestCase {
         )
         try Data("excluded".utf8).write(to: excluded)
         let engine = try makeEngine()
-        guard case .unknownModification(let reason) =
-                try await engine.inspect().state else {
-            return XCTFail("expected excluded artifact classification")
-        }
-        XCTAssertTrue(reason.lowercased().contains("playtools"))
-        await XCTAssertThrowsErrorAsync(try await engine.createPatchedCopy()) {
-            guard case PatcherError.unknownModification = $0 else {
-                return XCTFail("unexpected \($0)")
-            }
-        }
-        XCTAssertFalse(FileManager.default.fileExists(atPath: support.path))
+        let inspection = try await engine.inspect()
+        XCTAssertEqual(inspection.state, .readyToCreate)
+    }
+
+    func testVRChatConfigurationContentIsNotCompatibilityChecked() async throws {
+        // VRChat owns these files and may change their private schema between
+        // releases.  The patcher should copy opaque bytes and only enforce
+        // filesystem safety, never reject a build for plist contents.
+        try Data("not a plist".utf8).write(to: originalLibrary
+            .appendingPathComponent(
+                SelectiveVRChatConfigurationMigrator.entitlementRelativePath
+            ))
+        try Data("new settings schema".utf8).write(to: originalLibrary
+            .appendingPathComponent(
+                SelectiveVRChatConfigurationMigrator.appSettingsRelativePath
+            ))
+        try Data("opaque keymap".utf8).write(to: originalLibrary
+            .appendingPathComponent(
+                "Keymapping/com.vrchat.mobile/.config.plist"
+            ))
+
+        let engine = try makeEngine()
+        let inspection = try await engine.inspect()
+        XCTAssertEqual(inspection.state, .readyToCreate)
     }
 
     func testImportInterruptionIsJournaledAndRepairRetriesCleanly() async throws {
@@ -1477,17 +1598,12 @@ final class PatcherEngineTests: XCTestCase {
         )
     }
 
-    func testUnknownRetainedLibraryIsNeverOverwritten() async throws {
+    func testRetainedLibraryIsReusedWithoutContentCompatibilityCheck() async throws {
         try makeVRChat(importedVRChat, marker: "foreign")
         let engine = try makeEngine()
-        guard case .unknownModification = try await engine.inspect().state else {
-            return XCTFail("expected unknown retained library")
-        }
-        await XCTAssertThrowsErrorAsync(try await engine.createPatchedCopy()) {
-            guard case PatcherError.unknownModification = $0 else {
-                return XCTFail("unexpected \($0)")
-            }
-        }
+        let inspection = try await engine.inspect()
+        XCTAssertEqual(inspection.state, .readyToCreate)
+        _ = try await engine.createPatchedCopy()
         XCTAssertEqual(
             try String(
                 contentsOf: importedVRChat.appendingPathComponent("marker"),
@@ -1497,7 +1613,7 @@ final class PatcherEngineTests: XCTestCase {
         )
     }
 
-    func testPortableButTreeDifferentRetainedLibraryIsNeverAccepted() async throws {
+    func testRetainedLibraryWithExtraContentIsAccepted() async throws {
         try FileManager.default.createDirectory(
             at: importedVRChat.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -1509,10 +1625,13 @@ final class PatcherEngineTests: XCTestCase {
             encoding: .utf8
         )
         let engine = try makeEngine()
-        guard case .unknownModification = try await engine.inspect().state else {
-            return XCTFail("expected full-tree mismatch to fail closed")
-        }
-        XCTAssertFalse(FileManager.default.fileExists(atPath: patchedApp.path))
+        let inspection = try await engine.inspect()
+        XCTAssertEqual(inspection.state, .readyToCreate)
+        _ = try await engine.createPatchedCopy()
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: importedVRChat.appendingPathComponent("unexpected-resource").path
+        ))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: patchedApp.path))
     }
 
     func testRetainedExactLibraryIsReusedAfterRemove() async throws {
@@ -1619,7 +1738,6 @@ final class PatcherEngineTests: XCTestCase {
             manifest: .sourceOnlyFixture,
             paths: paths,
             verifier: MarkerAppVerifier(),
-            vrChatVerifier: MarkerVRChatVerifier(),
             importer: FixtureImporter(strategy: .clone),
             runtimeProvider: FixedRuntimeProvider(value: .supportedFixture),
             processInspector: FixedProcessInspector(names: [])
@@ -1646,7 +1764,6 @@ final class PatcherEngineTests: XCTestCase {
             manifest: .fixture,
             paths: unsafePaths,
             verifier: MarkerAppVerifier(),
-            vrChatVerifier: MarkerVRChatVerifier(),
             importer: FixtureImporter(strategy: .clone),
             runtimeProvider: FixedRuntimeProvider(value: .supportedFixture),
             processInspector: FixedProcessInspector(names: [])
@@ -1792,112 +1909,6 @@ final class PatcherEngineTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: patchedApp.path))
     }
 
-    func testEntitlementFramingIsDeterministicAndHomeIndependent() throws {
-        let first: [String: Any] = [
-            "z.array": ["hello", "/Users/alice/path"],
-            "a.bool": true
-        ]
-        let second: [String: Any] = [
-            "a.bool": true,
-            "z.array": ["hello", "/Users/bob/path"]
-        ]
-        let firstHash = try EntitlementsCanonicalizer.canonicalSHA256(
-            of: first,
-            homeDirectory: URL(fileURLWithPath: "/Users/alice")
-        )
-        let secondHash = try EntitlementsCanonicalizer.canonicalSHA256(
-            of: second,
-            homeDirectory: URL(fileURLWithPath: "/Users/bob")
-        )
-        XCTAssertEqual(firstHash, secondHash)
-        XCTAssertEqual(
-            firstHash,
-            "c016eb3e2bd0b90bd540540a776cbaa3301cbdd2aa32d70e89b0f9504139cf8a"
-        )
-    }
-
-    func testReviewedLocalVRChatPortableIdentityWhenFixtureIsAvailable() throws {
-        let local = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(
-                "Library/Containers/io.playcover.PlayCover/Applications/com.vrchat.mobile.app",
-                isDirectory: true
-            )
-        guard FileManager.default.fileExists(atPath: local.path) else {
-            throw XCTSkip("reviewed local VRChat fixture is not installed")
-        }
-        XCTAssertNoThrow(try VRChatArtifactScanner.verifyClean(local))
-        let actual = try VRChatAppVerifier().identity(
-            of: local,
-            expected: .reviewedFixture
-        )
-        XCTAssertNil(actual.mismatch(from: .reviewedFixture))
-        XCTAssertEqual(
-            actual.mainIdentity.normalizedUnsignedSHA256,
-            "cd6749e212d1ffed0e48a85cbd4d803e419eac8634fa1dcd62e25ea153e5bec3"
-        )
-        XCTAssertEqual(
-            actual.mainIdentity.entitlementsSHA256,
-            "5897ec7c1e895de492424821a7b5dbe4bea2552345244c20029a4083a4bb01f4"
-        )
-        XCTAssertEqual(actual.machoAllowlist, .reviewed)
-        let originalLibrary = local.deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let destinationLibrary = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(
-                "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat",
-                isDirectory: true
-            )
-        let configuration = try SelectiveVRChatConfigurationMigrator()
-            .validateSource(
-                in: originalLibrary,
-                destinationLibrary: destinationLibrary
-            )
-        XCTAssertTrue(AppIdentity.isSHA256(configuration.sha256))
-    }
-
-    func testMachOAllowlistRejectsExtraAndTamperedCode() throws {
-        let reviewedApp = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(
-                "Library/Containers/io.playcover.PlayCover/Applications/com.vrchat.mobile.app",
-                isDirectory: true
-            )
-        let reviewedBinary = reviewedApp.appendingPathComponent(
-            "Frameworks/_bisect.framework/_bisect"
-        )
-        guard FileManager.default.fileExists(atPath: reviewedBinary.path) else {
-            throw XCTSkip("reviewed Mach-O fixture is not installed")
-        }
-        let fixture = root.appendingPathComponent(
-            "MachO Allowlist Fixture",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(
-            at: fixture,
-            withIntermediateDirectories: true
-        )
-        let first = fixture.appendingPathComponent("first")
-        try FileManager.default.copyItem(at: reviewedBinary, to: first)
-        let baseline = try MachOAllowlistVerifier.identity(of: fixture)
-        XCTAssertEqual(baseline.count, 1)
-
-        let extra = fixture.appendingPathComponent("extra")
-        try FileManager.default.copyItem(at: reviewedBinary, to: extra)
-        let withExtra = try MachOAllowlistVerifier.identity(of: fixture)
-        XCTAssertEqual(withExtra.count, 2)
-        XCTAssertNotEqual(withExtra.digestSHA256, baseline.digestSHA256)
-        try FileManager.default.removeItem(at: extra)
-
-        var bytes = try Data(contentsOf: first)
-        guard bytes.count > 8_192 else {
-            throw XCTSkip("reviewed Mach-O fixture is unexpectedly small")
-        }
-        bytes[bytes.count / 2] ^= 0x01
-        try bytes.write(to: first)
-        let tampered = try MachOAllowlistVerifier.identity(of: fixture)
-        XCTAssertEqual(tampered.count, 1)
-        XCTAssertNotEqual(tampered.digestSHA256, baseline.digestSHA256)
-    }
-
     func testJournalSurvivesPatcherPayloadRelocation() async throws {
         let engine = try makeEngine()
         _ = try await engine.createPatchedCopy()
@@ -1937,7 +1948,6 @@ final class PatcherEngineTests: XCTestCase {
             manifest: .fixture,
             paths: paths,
             verifier: MarkerAppVerifier(),
-            vrChatVerifier: MarkerVRChatVerifier(),
             importer: importer,
             configurationMigrator: configurationMigrator,
             runtimeProvider: FixedRuntimeProvider(value: runtime),
@@ -2053,13 +2063,15 @@ final class PatcherEngineTests: XCTestCase {
             to: entitlement
         )
 
-        var settings = safeSettingsFixture
-        settings["bypass"] = false
-        settings["injectIntrospection"] = false
-        settings["playChain"] = true
-        settings["playChainDebugging"] = false
-        settings["rootWorkDir"] = true
-        settings["futureUnknownSetting"] = "must not migrate"
+        let settings: [String: Any] = [
+            "bundleIdentifier": "com.vrchat.mobile",
+            "bypass": false,
+            "injectIntrospection": false,
+            "playChain": true,
+            "playChainDebugging": false,
+            "rootWorkDir": true,
+            "futureUnknownSetting": "must not migrate"
+        ]
         try writePlist(
             settings,
             to: originalLibrary.appendingPathComponent(
@@ -2083,31 +2095,6 @@ final class PatcherEngineTests: XCTestCase {
             ],
             to: sourceKeymapping.appendingPathComponent(".config.plist")
         )
-    }
-
-    private var safeSettingsFixture: [String: Any] {
-        [
-            "aspectRatio": 1,
-            "bundleIdentifier": "com.vrchat.mobile",
-            "customScaler": 2.0,
-            "disableBuiltinMouse": false,
-            "displayRotation": 0,
-            "enableScrollWheel": true,
-            "floatingWindow": false,
-            "hideTitleBar": false,
-            "inverseScreenValues": false,
-            "keymapping": true,
-            "noKMOnInput": true,
-            "notch": true,
-            "resizableAspectRatioHeight": 0,
-            "resizableAspectRatioType": 0,
-            "resizableAspectRatioWidth": 0,
-            "resolution": 1,
-            "sensitivity": 50.0,
-            "version": "3.0.0",
-            "windowHeight": 1080,
-            "windowWidth": 1920
-        ]
     }
 
     private func writePlist(_ value: Any, to url: URL) throws {
@@ -2429,17 +2416,14 @@ final class PatcherEngineTests: XCTestCase {
 private struct MarkerAppVerifier: TreeVerifying {
     func identity(of appURL: URL) throws -> AppIdentity {
         _ = try SecureTreeAuditor.inspect(appURL)
-        if FileManager.default.fileExists(
-            atPath: appURL.appendingPathComponent("nightly-build").path
-        ) {
-            return .nightlySourceFixture
-        }
         let marker = try String(
             contentsOf: appURL.appendingPathComponent("marker"),
             encoding: .utf8
         )
         switch marker {
         case "source": return .sourceFixture
+        case "nightly": return .nightlyFixture
+        case "foreign-playcover": return .foreignPlayCoverFixture
         case "patched": return .patchedFixture
         default:
             return AppIdentity(
@@ -2452,44 +2436,6 @@ private struct MarkerAppVerifier: TreeVerifying {
                 treeSHA256: String(repeating: "f", count: 64)
             )
         }
-    }
-}
-
-private struct MarkerVRChatVerifier: VRChatVerifying {
-    func identity(
-        of appURL: URL,
-        expected: VRChatIdentity
-    ) throws -> ObservedVRChatIdentity {
-        _ = try SecureTreeAuditor.inspect(appURL)
-        let marker = try String(
-            contentsOf: appURL.appendingPathComponent("marker"),
-            encoding: .utf8
-        )
-        let tree = try AppTreeVerifier.treeSHA256(appURL)
-        if marker == "vrchat" {
-            return ObservedVRChatIdentity(
-                bundleIdentifier: expected.bundleIdentifier,
-                shortVersion: expected.shortVersion,
-                buildVersion: expected.buildVersion,
-                executableName: expected.executableName,
-                mainIdentity: expected.mainIdentity,
-                unityFramework: expected.unityFramework,
-                appdomeLibloader: expected.appdomeLibloader,
-                machoAllowlist: expected.machoAllowlist,
-                treeSHA256: tree
-            )
-        }
-        return ObservedVRChatIdentity(
-            bundleIdentifier: "foreign.vrchat",
-            shortVersion: "0",
-            buildVersion: "0",
-            executableName: "Foreign",
-            mainIdentity: expected.mainIdentity,
-            unityFramework: expected.unityFramework,
-            appdomeLibloader: expected.appdomeLibloader,
-            machoAllowlist: expected.machoAllowlist,
-            treeSHA256: tree
-        )
     }
 }
 
@@ -2730,6 +2676,30 @@ private extension AppIdentity {
         codeResourcesSHA256: String(repeating: "f", count: 64)
     )
 
+    static let nightlyFixture = AppIdentity(
+        bundleIdentifier: "io.playcover.PlayCover",
+        shortVersion: "3.1.0",
+        buildVersion: "1596",
+        executableName: "PlayCover",
+        executableSHA256: String(repeating: "1", count: 64),
+        executableUUID: "11111111-1111-1111-1111-111111111111",
+        treeSHA256: String(repeating: "2", count: 64),
+        repository: "https://github.com/PlayCover/PlayCover.git",
+        commit: "4916e6aa040bbbd2b1cf13965da87ccb8ef0f49d",
+        infoPlistSHA256: String(repeating: "3", count: 64),
+        codeResourcesSHA256: String(repeating: "4", count: 64)
+    )
+
+    static let foreignPlayCoverFixture = AppIdentity(
+        bundleIdentifier: "com.example.NotPlayCover",
+        shortVersion: "3.1.0",
+        buildVersion: "1596",
+        executableName: "PlayCover",
+        executableSHA256: String(repeating: "5", count: 64),
+        executableUUID: "55555555-5555-5555-5555-555555555555",
+        treeSHA256: String(repeating: "6", count: 64)
+    )
+
     static let patchedFixture = AppIdentity(
         bundleIdentifier: "io.github.northstarxyzz.PlayCoverVRChat",
         shortVersion: "3.1.0",
@@ -2740,92 +2710,6 @@ private extension AppIdentity {
         treeSHA256: String(repeating: "d", count: 64),
         infoPlistSHA256: String(repeating: "1", count: 64),
         codeResourcesSHA256: String(repeating: "2", count: 64)
-    )
-
-    static let nightlySourceFixture = AppIdentity(
-        bundleIdentifier: "io.playcover.PlayCover",
-        shortVersion: "3.2.0-nightly",
-        buildVersion: "1014",
-        executableName: "PlayCover",
-        executableSHA256: String(repeating: "1", count: 64),
-        executableUUID: "11111111-1111-1111-1111-111111111111",
-        treeSHA256: String(repeating: "2", count: 64),
-        repository: "https://github.com/PlayCover/PlayCover.git",
-        commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        infoPlistSHA256: String(repeating: "3", count: 64),
-        codeResourcesSHA256: String(repeating: "4", count: 64)
-    )
-}
-
-private extension VRChatIdentity {
-    static let fixture = VRChatIdentity(
-        bundleIdentifier: "com.vrchat.mobile",
-        shortVersion: "2026.2.30300",
-        buildVersion: "1365",
-        sourceAppRelativePath:
-            "Library/Containers/io.playcover.PlayCover/Applications/com.vrchat.mobile.app",
-        destinationAppRelativePath:
-            "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat/Applications/com.vrchat.mobile.app",
-        executableName: "VRChat",
-        mainIdentity: PortableMachOIdentity(
-            uuid: "AAAAAAAA-1111-2222-3333-BBBBBBBBBBBB",
-            normalizedUnsignedSHA256: String(repeating: "1", count: 64),
-            loadCommandsSHA256: String(repeating: "2", count: 64),
-            entitlementsSHA256: String(repeating: "3", count: 64)
-        ),
-        unityFramework: ReviewedBinaryIdentity(
-            relativePath: "Frameworks/UnityFramework.framework/UnityFramework",
-            sha256: String(repeating: "4", count: 64),
-            uuid: "BBBBBBBB-1111-2222-3333-CCCCCCCCCCCC"
-        ),
-        appdomeLibloader: ReviewedBinaryIdentity(
-            relativePath: "Frameworks/libloader.framework/libloader",
-            sha256: String(repeating: "5", count: 64),
-            uuid: "CCCCCCCC-1111-2222-3333-DDDDDDDDDDDD"
-        ),
-        machoAllowlist: .reviewed
-    )
-
-    static let reviewedFixture = VRChatIdentity(
-        bundleIdentifier: "com.vrchat.mobile",
-        shortVersion: "2026.2.30300",
-        buildVersion: "1365",
-        sourceAppRelativePath:
-            "Library/Containers/io.playcover.PlayCover/Applications/com.vrchat.mobile.app",
-        destinationAppRelativePath:
-            "Library/Containers/io.github.northstarxyzz.PlayCoverVRChat/Applications/com.vrchat.mobile.app",
-        executableName: "VRChat",
-        mainIdentity: PortableMachOIdentity(
-            uuid: "41CADB30-CCEF-3B6C-8A1D-237CE5D64C42",
-            normalizedUnsignedSHA256:
-                "cd6749e212d1ffed0e48a85cbd4d803e419eac8634fa1dcd62e25ea153e5bec3",
-            loadCommandsSHA256:
-                "664266000f81b937260522d25eda5d81bff3f5d460e5e14512f471c8eaec9afb",
-            entitlementsSHA256:
-                "5897ec7c1e895de492424821a7b5dbe4bea2552345244c20029a4083a4bb01f4"
-        ),
-        unityFramework: ReviewedBinaryIdentity(
-            relativePath: "Frameworks/UnityFramework.framework/UnityFramework",
-            sha256:
-                "497d0ea4416d734ef0fb8dbb1376a0c31370577ed86bfd8f37a6d1f63e2163e9",
-            uuid: "37732282-7315-38F5-9DD3-124F2B1162B4"
-        ),
-        appdomeLibloader: ReviewedBinaryIdentity(
-            relativePath: "Frameworks/libloader.framework/libloader",
-            sha256:
-                "90fd505324581d09883e03cbb46ac6cf8817c18181fa9438381551d589d62440",
-            uuid: "64B5DAFB-DE12-3089-AE61-912CE193C876"
-        ),
-        machoAllowlist: .reviewed
-    )
-}
-
-private extension MachOAllowlistIdentity {
-    static let reviewed = MachOAllowlistIdentity(
-        format: "PCVR-MACHO-ALLOWLIST/1",
-        digestSHA256:
-            "60df094badbe3fb9e8f051f07d2a38a54cfb7bd592c3cf62a69e355050ec5109",
-        count: 46
     )
 }
 
@@ -2901,7 +2785,6 @@ private extension CompatibilityManifest {
         architecture: "arm64",
         playCover: .sourceFixture,
         patchedPlayCover: .patchedFixture,
-        vrChat: .fixture,
         host: HostRequirement(
             productVersion: "26.6",
             buildVersion: "25G70",
@@ -2928,7 +2811,6 @@ private extension CompatibilityManifest {
         architecture: "arm64",
         playCover: .sourceFixture,
         patchedPlayCover: nil,
-        vrChat: .fixture,
         host: fixture.host,
         policy: fixture.policy,
         ipc: fixture.ipc
